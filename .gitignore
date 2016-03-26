@@ -1,5 +1,6 @@
 UML/
-data*
+data-*
+data/
 checkpoint
 env/
 *.iml
