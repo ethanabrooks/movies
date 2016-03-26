@@ -19,16 +19,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import data
 import time
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
-import tensorflow as tf
 
+import data
+import ops
+import tensorflow as tf
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.examples.tutorials.mnist import mnist
-from data import num_movies
-import ops
 
 # Basic model parameters as external flags.
 flags = tf.app.flags
@@ -40,22 +39,20 @@ flags.DEFINE_integer('hidden2', 2500, 'Number of units in hidden layer 2.')
 flags.DEFINE_integer('batch_size', 10, 'Batch size.  '
                                        'Must divide evenly into the dataset sizes.')
 flags.DEFINE_string('train_dir', 'data', 'Directory to put the training data.')
+flags.DEFINE_string('save_dir', 'save', 'Directory to save data from session.')
 flags.DEFINE_string('dataset', 'movies', 'Directory to put the training data.')
 flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data '
                                          'for unit testing.')
 
-if FLAGS.dataset == 'mnist':
-    # The MNIST dataset has 10 classes, representing the digits 0 through 9.
-    num_classes = 10
-
-    # The MNIST images are always 28x28 pixels.
-    IMAGE_SIZE = 28
-    data_dim = IMAGE_SIZE * IMAGE_SIZE
-else:
-    data_dim = num_movies
+# # The MNIST dataset has 10 classes, representing the digits 0 through 9.
+# num_classes = 10
+#
+# # The MNIST images are always 28x28 pixels.
+# IMAGE_SIZE = 28
+# data_dim = IMAGE_SIZE * IMAGE_SIZE
 
 
-def placeholder_inputs(batch_size):
+def placeholder_inputs(batch_size, data_dim):
     """Generate placeholder variables to represent the input tensors.
 
   These placeholders are used as inputs by the rest of the model building
@@ -72,11 +69,11 @@ def placeholder_inputs(batch_size):
     # image and label tensors, except the first dimension is now batch_size
     # rather than the full size of the train or test data sets.
     if FLAGS.dataset == 'mnist':
-        images_placeholder = tf.placeholder(tf.float32, shape=(batch_size, mnist.IMAGE_PIXELS))
+        images_placeholder = tf.placeholder(tf.float32, shape=(batch_size, data_dim))
         labels_placeholder = tf.placeholder(tf.int32, shape=(batch_size))
     else:
-        images_placeholder = tf.placeholder(tf.float32, shape=(batch_size, data.num_movies))
-        labels_placeholder = tf.placeholder(tf.float32, shape=(batch_size, data.num_movies))
+        images_placeholder = tf.placeholder(tf.float32, shape=(batch_size, data_dim))
+        labels_placeholder = tf.placeholder(tf.float32, shape=(batch_size, data_dim))
 
     return images_placeholder, labels_placeholder
 
@@ -104,7 +101,7 @@ def fill_feed_dict(data_set, images_pl, labels_pl):
     # FLAGS.fake_data)
     feed_dict = {
         images_pl: images_feed,
-        labels_pl: labels_feed
+        labels_pl: labels_feed,
     }
 
     return feed_dict
@@ -136,7 +133,7 @@ def do_eval(sess,
     num_examples = steps_per_epoch * FLAGS.batch_size
     if FLAGS.dataset == 'movies':
         steps_per_epoch += 1
-        num_examples = steps_per_epoch * FLAGS.batch_size * data_dim
+        num_examples = steps_per_epoch * FLAGS.batch_size * data_set.data_dim
     for step in xrange(steps_per_epoch):
         feed_dict = fill_feed_dict(data_set, images_placeholder, labels_placeholder)
         true_count += sess.run(eval_correct, feed_dict=feed_dict)
@@ -151,20 +148,20 @@ def run_training():
     # test on MNIST.
     if FLAGS.dataset == 'mnist':
         data_sets = input_data.read_data_sets(FLAGS.train_dir, FLAGS.fake_data)
+        data_dim = mnist.IMAGE_PIXELS
     else:
         data_sets = data.DataSets()
+        data_dim = data_sets.dim
 
     # Tell TensorFlow that the model will be built into the default Graph.
     with tf.Graph().as_default():
         # Generate placeholders for the images and labels.
         images_placeholder, labels_placeholder = placeholder_inputs(
-            FLAGS.batch_size)
+            FLAGS.batch_size, data_dim)
 
         if FLAGS.dataset == 'mnist':
             # Build a Graph that computes predictions from the inference model.
-            logits = mnist.inference(images_placeholder,
-                                     FLAGS.hidden1,
-                                     FLAGS.hidden2)
+            logits = mnist.inference(images_placeholder, FLAGS.hidden1, FLAGS.hidden2)
 
             # Add to the Graph the Ops for loss calculation.
             loss = mnist.loss(logits, labels_placeholder)
@@ -177,9 +174,7 @@ def run_training():
 
         else:
             # Build a Graph that computes predictions from the inference model.
-            logits = ops.inference(images_placeholder,
-                                   FLAGS.hidden1,
-                                   FLAGS.hidden2)
+            logits = ops.inference(images_placeholder, FLAGS.hidden1, FLAGS.hidden2)
 
             # Add to the Graph the Ops for loss calculation.
             loss = ops.loss(logits, labels_placeholder)
@@ -205,11 +200,12 @@ def run_training():
         sess.run(init)
 
         # Instantiate a SummaryWriter to output summaries and the Graph.
-        summary_writer = tf.train.SummaryWriter(FLAGS.train_dir,
+        summary_writer = tf.train.SummaryWriter(FLAGS.save_dir,
                                                 graph_def=sess.graph_def)
 
         # And then after everything is built, start the training loop.
         steps_per_epoch = data_sets.train.num_examples // FLAGS.batch_size
+        bar = data.progress_bar()
         for epoch in xrange(FLAGS.num_epochs):
             for step in xrange(steps_per_epoch):
                 start_time = time.time()
@@ -232,12 +228,13 @@ def run_training():
                 # if step == 0:
                 # Print status to stdout.
                 # Save a checkpoint and evaluate the model periodically.
+                bar.next()
             if (epoch) % 10 == 0 or (epoch + 1) == FLAGS.num_epochs:
                 print('Epoch %d: loss = %.2f (%.3f sec)' % (epoch, loss_value, duration))
                 # Update the events file.
                 summary_str = sess.run(summary_op, feed_dict=feed_dict)
                 summary_writer.add_summary(summary_str, epoch)
-                saver.save(sess, FLAGS.train_dir, global_step=step)
+                saver.save(sess, FLAGS.save_dir, global_step=step)
 
             if False:
                 # Evaluate against the training set.
@@ -261,6 +258,7 @@ def run_training():
                         images_placeholder,
                         labels_placeholder,
                         data_sets.test)
+        bar.finish()
 
 
 def main(_):

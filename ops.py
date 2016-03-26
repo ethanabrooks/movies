@@ -34,10 +34,6 @@ import math
 
 import tensorflow as tf
 
-from data import num_movies
-
-NUM_CLASSES = DATA_DIM = num_movies
-
 
 def inference(images, hidden1_units, hidden2_units):
     """Build the MNIST model up to where it may be used for inference.
@@ -50,6 +46,7 @@ def inference(images, hidden1_units, hidden2_units):
   Returns:
     softmax_linear: Output tensor with the computed logits.
   """
+    NUM_CLASSES = DATA_DIM = tf.shape(images)[1]
     # Hidden 1
     with tf.name_scope('hidden1'):
         weights = tf.Variable(
@@ -79,7 +76,7 @@ def inference(images, hidden1_units, hidden2_units):
     return logits
 
 
-def mnist_loss(logits, labels):
+def mnist_loss(logits, labels, num_classes):
     """Calculates the loss from the logits and the labels.
 
   Args:
@@ -98,7 +95,7 @@ def mnist_loss(logits, labels):
     indices = tf.expand_dims(tf.range(0, batch_size), 1)
     concated = tf.concat(1, [indices, labels])
     onehot_labels = tf.sparse_to_dense(
-        concated, tf.pack([batch_size, NUM_CLASSES]), 1.0, 0.0)
+        concated, tf.pack([batch_size, num_classes]), 1.0, 0.0)
     cross_entropy = tf.nn.softmax_cross_entropy_with_logits(logits,
                                                             onehot_labels,
                                                             name='xentropy')
@@ -120,7 +117,7 @@ def loss(logits, labels):
     #                                                         labels,
     #                                                         name='cross_entropy')
     # loss = tf.reduce_mean(cross_entropy, name='cross_entropy_mean')
-    loss = tf.nn.l2_loss(logits-labels)
+    loss = tf.nn.l2_loss(logits - labels)
     return loss
 
 
