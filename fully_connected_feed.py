@@ -44,6 +44,7 @@ flags.DEFINE_string('dataset', 'movies', 'Directory to put the training data.')
 flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data '
                                          'for unit testing.')
 
+
 # # The MNIST dataset has 10 classes, representing the digits 0 through 9.
 # num_classes = 10
 #
@@ -205,11 +206,11 @@ def run_training():
 
         # And then after everything is built, start the training loop.
         steps_per_epoch = data_sets.train.num_examples // FLAGS.batch_size
+
         bar = data.progress_bar()
+        start_time = time.time()
         for epoch in xrange(FLAGS.num_epochs):
             for step in xrange(steps_per_epoch):
-                start_time = time.time()
-
                 # Fill a feed dictionary with the actual set of images and labels
                 # for this particular training step.
                 feed_dict = fill_feed_dict(data_sets.train, images_placeholder, labels_placeholder)
@@ -222,21 +223,20 @@ def run_training():
                 _, loss_value = sess.run([train_op, loss],
                                          feed_dict=feed_dict)
 
-                duration = time.time() - start_time
-
                 # Write the summaries and print an overview fairly often.
                 # if step == 0:
                 # Print status to stdout.
                 # Save a checkpoint and evaluate the model periodically.
                 bar.next()
-            if (epoch) % 10 == 0 or (epoch + 1) == FLAGS.num_epochs:
-                print('Epoch %d: loss = %.2f (%.3f sec)' % (epoch, loss_value, duration))
-                # Update the events file.
-                summary_str = sess.run(summary_op, feed_dict=feed_dict)
-                summary_writer.add_summary(summary_str, epoch)
-                saver.save(sess, FLAGS.save_dir, global_step=step)
+            duration = time.time() - start_time
+            print('Epoch %d: loss = %.2f (%.3f sec)' % (epoch, loss_value, duration))
+            # start_time = time.time()
+            # Update the events file.
+            summary_str = sess.run(summary_op, feed_dict=feed_dict)
+            summary_writer.add_summary(summary_str, epoch)
+            saver.save(sess, FLAGS.save_dir, global_step=step)
 
-            if False:
+            if epoch % 10 == 0 or (epoch + 1) == FLAGS.num_epochs:
                 # Evaluate against the training set.
                 print('Training Data Eval:')
                 do_eval(sess,
