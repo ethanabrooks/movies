@@ -4,3 +4,8 @@ data/
 checkpoint
 env/
 *.iml
+save*
+backup/
+checkpoints/
+logs/
+

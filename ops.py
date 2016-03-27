@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Builds the MNIST network.
+"""Fundamental operations of the autoencoder
 
 Implements the inference/loss/training pattern for model building.
 
@@ -33,9 +33,10 @@ from __future__ import print_function
 import math
 
 import tensorflow as tf
+import numpy as np
 
 
-def inference(images, hidden1_units, hidden2_units):
+def inference(inputs, keep_prob, data_dim, hidden1_units, hidden2_units):
     """Build the MNIST model up to where it may be used for inference.
 
   Args:
@@ -46,16 +47,16 @@ def inference(images, hidden1_units, hidden2_units):
   Returns:
     softmax_linear: Output tensor with the computed logits.
   """
-    NUM_CLASSES = DATA_DIM = tf.shape(images)[1]
     # Hidden 1
     with tf.name_scope('hidden1'):
+        shape = [data_dim, hidden1_units]
         weights = tf.Variable(
-            tf.truncated_normal([DATA_DIM, hidden1_units],
-                                stddev=1.0 / math.sqrt(float(DATA_DIM))),
+            tf.truncated_normal(shape,
+                                stddev=1.0 / math.sqrt(data_dim)),
             name='weights')
         biases = tf.Variable(tf.zeros([hidden1_units]),
                              name='biases')
-        hidden1 = tf.nn.relu(tf.matmul(images, weights) + biases)
+        hidden1 = tf.nn.relu(tf.matmul(inputs, weights) + biases)
     # Hidden 2
     with tf.name_scope('hidden2'):
         weights = tf.Variable(
@@ -65,14 +66,15 @@ def inference(images, hidden1_units, hidden2_units):
         biases = tf.Variable(tf.zeros([hidden2_units]),
                              name='biases')
         hidden2 = tf.nn.relu(tf.matmul(hidden1, weights) + biases)
+        hidden2_dropout = tf.nn.dropout(hidden2, tf.constant(.8))
     # Linear
     with tf.name_scope('softmax_linear'):
         weights = tf.Variable(
-            tf.truncated_normal([hidden2_units, NUM_CLASSES],
+            tf.truncated_normal([hidden2_units, data_dim],
                                 stddev=1.0 / math.sqrt(float(hidden2_units))),
             name='weights')
-        biases = tf.Variable(tf.zeros([NUM_CLASSES]), name='biases')
-        logits = tf.matmul(hidden2, weights) + biases
+        biases = tf.Variable(tf.zeros([data_dim]), name='biases')
+        logits = tf.matmul(hidden2_dropout, weights) + biases
     return logits
 
 
@@ -150,7 +152,16 @@ def training(loss, learning_rate):
     return train_op
 
 
-def evaluation(logits, labels):
+def almost_equal(a, b):
+    """
+    :param a: tensor :param b: tensor
+    :returns equivalent to numpy: a == b, if a and b were ndarrays
+    """
+    not_almost_equal = tf.abs(tf.sign(tf.round(a - b)))
+    return tf.abs(not_almost_equal - 1)
+
+
+def evaluation(logits, labels, mask):
     """Evaluate the quality of the logits at predicting the label.
 
   Args:
@@ -166,6 +177,8 @@ def evaluation(logits, labels):
     # It returns a bool tensor with shape [batch_size] that is true for
     # the examples where the label's is was in the top k (here k=1)
     # of all logits for that example.
-    wrong = tf.to_int32(tf.abs(tf.sign(tf.round(logits - labels))))
+    total_correct = almost_equal(logits, labels)
     # Return the number of true entries.
-    return tf.size(logits) - tf.reduce_sum(wrong)
+    correct_that_count = tf.reduce_sum(tf.boolean_mask(total_correct, mask))
+    total_that_count = tf.reduce_sum(tf.to_int32(mask))
+    return np.array([correct_that_count, total_that_count])

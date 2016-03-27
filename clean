@@ -1,3 +1,4 @@
 #!/bin/zsh
 
-rm data/events.out*
+rm clean/*
+rm data/.data_loaded
