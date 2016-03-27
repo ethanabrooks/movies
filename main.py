@@ -1,4 +1,7 @@
 import argparse
+
+import subprocess
+
 import model
 
 import os
@@ -6,8 +9,8 @@ import os
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--train', action='store_true', help='train model from scratch')
-    parser.add_argument('-u', '--username', type=str, help='user to predict ratings for')
-    parser.add_argument('-m', '--movie', type=str, help='movie to predict ratings for')
+    parser.add_argument('-u', '--userid', type=int, help='user to predict ratings for')
+    parser.add_argument('-m', '--movieid', type=int, help='movie to predict ratings for')
     args = parser.parse_args()
 
     # check if user has entered both a username and a movie title
@@ -23,13 +26,13 @@ if __name__ == '__main__':
                               'you would like to predict: ' % args.movie)
 
     # path to saved version of trained model
-    load_path = os.path.join('models', 'model.cpt')
+    load_path = os.path.join('checkpoints', 'checkpoint')
 
     # check if a model has been previously trained
     already_trained = os.path.exists(load_path)
     if not (args.train or already_trained):
         response = input('Model has not been trained. '
-                         'Train it now (this may take several minutes)?')
+                         'Train it now (this may take several hours)?')
         while True:
             if response in 'Yes yes':
                 args.train = True
@@ -41,11 +44,10 @@ if __name__ == '__main__':
                 response = input('Please enter [y|n].')
 
     if args.train:
-        model.train(load_path)
+        subprocess.call(['python', 'model.py'])
 
     # predict a rating for the user
-    if args.username and args.movie:
-        model.load(load_path)
+    if args.userid and args.movie:
         prediction = model.predict(args.username, args.movie)
         print("The model predicts that %s will give %s a %d"
               % args.username, args.movie, prediction)

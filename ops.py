@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Builds the MNIST network.
+"""Fundamental operations of the autoencoder
 
 Implements the inference/loss/training pattern for model building.
 
@@ -36,7 +36,7 @@ import tensorflow as tf
 import numpy as np
 
 
-def inference(images, data_dim, hidden1_units, hidden2_units):
+def inference(inputs, keep_prob, data_dim, hidden1_units, hidden2_units):
     """Build the MNIST model up to where it may be used for inference.
 
   Args:
@@ -46,17 +46,18 @@ def inference(images, data_dim, hidden1_units, hidden2_units):
 
   Returns:
     softmax_linear: Output tensor with the computed logits.
+    :param keep_prob:
   """
     # Hidden 1
     with tf.name_scope('hidden1'):
+        shape = [data_dim, hidden1_units]
         weights = tf.Variable(
-            tf.truncated_normal([data_dim, hidden1_units],
-                                stddev=1.0 / math.sqrt(float(hidden1_units))),
-            #  TODO stddev=1.0 / math.sqrt(float(data_dim))),
+            tf.truncated_normal(shape,
+                                stddev=1.0 / math.sqrt(data_dim)),
             name='weights')
         biases = tf.Variable(tf.zeros([hidden1_units]),
                              name='biases')
-        hidden1 = tf.nn.relu(tf.matmul(images, weights) + biases)
+        hidden1 = tf.nn.relu(tf.matmul(inputs, weights) + biases)
     # Hidden 2
     with tf.name_scope('hidden2'):
         weights = tf.Variable(
@@ -66,6 +67,7 @@ def inference(images, data_dim, hidden1_units, hidden2_units):
         biases = tf.Variable(tf.zeros([hidden2_units]),
                              name='biases')
         hidden2 = tf.nn.relu(tf.matmul(hidden1, weights) + biases)
+        hidden2_dropout = tf.nn.dropout(hidden2, tf.constant(.8))
     # Linear
     with tf.name_scope('softmax_linear'):
         weights = tf.Variable(
@@ -73,7 +75,7 @@ def inference(images, data_dim, hidden1_units, hidden2_units):
                                 stddev=1.0 / math.sqrt(float(hidden2_units))),
             name='weights')
         biases = tf.Variable(tf.zeros([data_dim]), name='biases')
-        logits = tf.matmul(hidden2, weights) + biases
+        logits = tf.matmul(hidden2_dropout, weights) + biases
     return logits
 
 
