@@ -12,6 +12,7 @@ DATA_DIR = 'data'
 # names of files where we will pickle and save objects for later use
 datasets_file = 'DataSets'
 movie_dic_file = 'movie_dic'
+user_dic_file = 'user_dic'
 RATINGS = 'ratings.dat'
 MAX_RATING = 5
 MIN_RATING = 0
@@ -38,6 +39,10 @@ def normalize(rating):
     return rating - np.mean((MAX_RATING, MIN_RATING))
 
 
+def unnormalize(rating):
+    return rating + np.mean((MAX_RATING, MIN_RATING))
+
+
 def backup_path(filename):
     """ to be called from a child of the main directory """
     return os.path.join('..', 'backup', filename)
@@ -48,40 +53,13 @@ def data_path(filename):
     return os.path.join(DATA_DIR, filename)
 
 
-def get_col(movie_id):
-    """
-    :param movie_id from preprocessed data
-    :returns column number in instance array
-    """
-    movie_dic = cPickle.load(movie_dic_file)
-    return movie_dic[movie_id]
+class FilePointer:
+    def __init__(self, filename, offset):
+        self.filename = filename
+        self.offset = offset
 
 
-def get_ratings_with_iterator(user_id, movie_dic, file_iterator):
-    """
-    :returns movies and ratings associated with user_id
-    """
-    movies, ratings = ([] for _ in range(2))
-    for line in file_iterator:
-        user, movie, rating, _ = parse('{}::{}::{}::{}', line)
-        if user == user_id:  # if not first line of file
-            if movie not in movie_dic:
-                movie_dic[movie] = len(movie_dic)
-            movies.append(movie_dic[movie])
-            ratings.append(normalize(float(rating)))
-
-    return movies, ratings
-
-
-def get_ratings(user_id):
-    movie_dic = cPickle.load(movie_dic_file)
-    with open(RATINGS, 'r') as file_iterator:
-        cols, values = get_ratings_with_iterator(user_id, movie_dic, file_iterator)
-    rows = np.ones_like(cols)
-    return sp.csc_matrix((values, (rows, cols)), shape=[1, len(movie_dic)])
-
-
-class DataSets:
+class Data:
     """
     Collector of the train, test, and validation datasets.
     This class creates the other three and contains information common to all.
@@ -101,7 +79,7 @@ class DataSets:
 
         # these files are the prerequisites for not reprocessing data
         files_that_must_exist = [filename + '.dat' for filename in datasets] + \
-                                [datasets_file, movie_dic_file]
+                                [datasets_file]
 
         def data_already_processed():
             return all(os.path.isfile(filepath) and  # it exists
@@ -121,7 +99,7 @@ class DataSets:
 
         else:  # if data has not already been loaded
 
-            # create datasets attribute
+            # create the three datasets
             self.datasets = []
             for name in datasets:
                 dataset = DataSet(name + '.dat', corrupt)
@@ -129,42 +107,46 @@ class DataSets:
                 self.datasets.append(dataset)
 
             # movie_dic assigns a unique id to each movie such that all ids are contiguous
-            movie_dic = {}
+            self.movie_dic = {}
+            self.user_dic = {}
+
+            # we need to convert data into a more usable form
+            # and split into train, validation, and test
             with open(ratings) as data:
                 last_user = None
                 bar = progress_bar('Loading ratings data', num_lines(ratings))
                 for i, line in enumerate(data):
                     user, movie, rating, _ = parse('{}::{}::{}::{}', line)
-                    if user != last_user:  # if not first line of file
+                    if user != last_user:  # if we're on to a new user
                         if last_user is not None:
-                            random_num = random.random()
-                            if random_num < .7:  # 70% of the rime
-                                name = self.train
-                            elif random_num < .9:  # 20% of the time
-                                name = self.test
-                            else:  # 10% of the time
-                                name = self.validation
-                            name.new_instance(movies, ratings)
+                            self.write_instance(last_user, movies, ratings)
+
+                        # clean slate for next user
                         movies, ratings = ([] for _ in range(2))
                         last_user = user
-                    if movie not in movie_dic:
-                        movie_dic[movie] = len(movie_dic)
-                    movies.append(movie_dic[movie])
+
+                    if movie not in self.movie_dic:
+                        # we don't want to use the original movie ids in the file
+                        # because they may not be contiguous and then our tensors
+                        # would be unnecessarily large
+                        self.movie_dic[movie] = len(self.movie_dic)
+
+                    movies.append(self.movie_dic[movie])
                     ratings.append(normalize(float(rating)))
                     bar.next()
                 bar.finish()
+                self.write_instance(user, movies, ratings)
             print("Loaded data.")
 
-            # set dim attribute for all datasets
-            self.set_data_dim(len(movie_dic))
+            for dataset in self.datasets:
+                dataset.file_handle.close()
+
+            # the dimension of each instance
+            self.dim = len(self.movie_dic)
 
             # save self to file
             with open(datasets_file, 'w') as fp:
                 cPickle.dump(self.__dict__, fp, 2)
-
-            # save movie dictionary to file
-            with open(movie_dic_file, 'w') as fp:
-                cPickle.dump(movie_dic, fp, 2)
 
             # backup
             for filename in files_that_must_exist:
@@ -172,10 +154,46 @@ class DataSets:
 
         os.chdir('..')  # return to main dir
 
-    def set_data_dim(self, dim):
-        for dataset in self.datasets:
-            self.dim = dataset.dim = dim
-            dataset.file_handle.close()
+    def write_instance(self, user, movies, ratings):
+        random.seed(7)  # lucky number 7
+        random_num = random.random()
+        if random_num < .7:  # 70% of the rime
+            dataset = self.train
+        elif random_num < .9:  # 20% of the time
+            dataset = self.test
+        else:  # 10% of the time
+            dataset = self.validation
+
+        # write instance to the file associated with the dataset
+        pos = dataset.new_instance(movies, ratings)
+
+        # save a "pointer" to the users position in the file
+        self.user_dic[user] = FilePointer(dataset.datafile, pos)
+
+
+    def get_col(self, movie_id):
+        """
+        :param movie_id from preprocessed data
+        :returns column number in instance array
+        """
+        return self.movie_dic[movie_id]
+
+    def get_ratings(self, user_id):
+        """
+        :returns the ratings instance corresponding to the user_id
+        (for feeding into the model)
+        """
+        if user_id not in self.user_dic:
+            print('Sorry, no user with that id.')
+            exit(0)
+        fileptr = self.user_dic[user_id]
+        fp = open(data_path(fileptr.filename), 'r')
+        fp.seek(fileptr.offset)
+        readline = fp.readline()
+        fromstring = np.fromstring(readline, sep=' ')
+        cols, values = fromstring.reshape(2, -1)
+        rows = np.ones_like(cols)
+        return sp.csc_matrix((values, (rows, cols)), shape=[1, self.dim])
 
 
 class DataSet:
@@ -191,10 +209,13 @@ class DataSet:
         """
         Write movies and ratings to the file associated with this dataset.
         This data will later be read from the file during training.
+        :returns the position where the data was saved
         """
         self.num_examples += 1
         data = np.r_[movies, ratings].reshape(1, -1)
+        pos = self.file_handle.tell()
         np.savetxt(self.file_handle, data, fmt='%1.1f')
+        return pos
 
     def next_batch(self, batch_size):
         """

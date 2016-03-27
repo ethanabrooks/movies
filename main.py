@@ -1,6 +1,8 @@
 import argparse
 
 import subprocess
+
+import data
 import model
 
 import os
@@ -12,17 +14,21 @@ if __name__ == '__main__':
     parser.add_argument('-m', '--movie_id', type=int, help='movie to predict ratings for')
     args = parser.parse_args()
 
+
+    def print_username_and_movie_warning():
+        print('Warning: the model cannot make predictions '
+              'unless you enter both a username and a movie title.')
+
+
     # check if user has entered both a username and a movie title
-    username_and_movie_warning = 'Warning: the model cannot make predictions ' \
-                                 'unless you enter both a username and a movie title.'
-    if args.user_id and not args.movie_id:
-        print(username_and_movie_warning)
+    if not args.movie_id:
+        print_username_and_movie_warning()
         args.movie_id = input('Please enter the movie you would like '
-                           'to predict %s\'s ratings for: ' % args.user_id)
-    if args.movie_id and not args.user_id:
-        print(username_and_movie_warning)
-        args.username = input('Please enter the user whose rating of %s '
-                              'you would like to predict: ' % args.movie_id)
+                              'to predict %s\'s ratings for: ' % args.user_id)
+    if not args.user_id:
+        print_username_and_movie_warning()
+        args.user_id = input('Please enter the user whose rating of %s '
+                             'you would like to predict: ' % args.movie_id)
 
     # path to saved version of trained model
     load_path = os.path.join('checkpoints', 'checkpoint')
@@ -47,6 +53,8 @@ if __name__ == '__main__':
 
     # predict a rating for the user
     if args.user_id and args.movie_id:
-        prediction = model.predict(args.user_id, args.movie_id)
+        data_data = data.Data(ratings='debug.dat')
+        data_data.get_ratings('2')
+        prediction = model.predict(args.user_id, args.movie_id, data_data)
         print("The model predicts that %s will give %s a %d"
               % args.user_id, args.movie_id, prediction)

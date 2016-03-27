@@ -119,7 +119,7 @@ def restore_variables(sess):
 def run_training():
     """Train the autoencoder for a number of steps."""
     # Get the sets of images and labels for training, validation, and test on data.
-    data_sets = data.DataSets(datafile='debug.dat') if FLAGS.debug else data.DataSets()
+    data_sets = data.Data(datafile='debug.dat') if FLAGS.debug else data.Data()
 
     # Tell TensorFlow that the model will be built into the default Graph.
     with tf.Graph().as_default():
@@ -231,23 +231,24 @@ def run_training():
                         do_eval(data_sets.test)
 
 
-def predict(userid, movieid):
+def predict(userid, movieid, input_data):
     # Create a loader for loading training checkpoints.
-    instance = data.get_ratings(userid)
+    instance = input_data.get_ratings(userid)
 
     with tf.Graph().as_default():
         # Build a Graph that computes predictions from the inference model.
         logits = ops.inference(tf.constant(instance),
                                FLAGS.dropout_rate,
-                               instance.shape[1],
+                               input_data.dim,
                                FLAGS.hidden1,
                                FLAGS.hidden2)
 
         sess = tf.Session()
         # Restore variables from disk.
         restore_variables(sess)
-        prediction = sess.run(logits)
-        return prediction[data.get_col(movieid)]
+        predictions = sess.run(logits)
+        prediction = predictions[input_data.get_col(movieid)]
+        return data.unnormalize(prediction)
 
 
 def main(_):
