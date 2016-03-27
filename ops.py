@@ -36,11 +36,11 @@ import tensorflow as tf
 import numpy as np
 
 
-def inference(inputs, keep_prob, data_dim, hidden1_units, hidden2_units):
+def inference(inputs, data_dim, hidden1_units, hidden2_units):
     """Build the MNIST model up to where it may be used for inference.
 
   Args:
-    images: Images placeholder, from inputs().
+    inputs: inputs placeholder, from inputs().
     hidden1_units: Size of the first hidden layer.
     hidden2_units: Size of the second hidden layer.
 
