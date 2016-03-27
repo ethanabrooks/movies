@@ -1,3 +1,4 @@
 #!/bin/zsh
 
 rm clean/*
+rm data/.data_loaded

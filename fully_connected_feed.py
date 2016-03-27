@@ -26,8 +26,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 import data
 import ops
 import tensorflow as tf
-from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.examples.tutorials.mnist import mnist
+import numpy as np
 
 # Basic model parameters as external flags.
 flags = tf.app.flags
@@ -41,16 +40,8 @@ flags.DEFINE_integer('batch_size', 10, 'Batch size.  '
 flags.DEFINE_string('train_dir', 'data', 'Directory to put the training data.')
 flags.DEFINE_string('save_dir', 'save', 'Directory to save data from session.')
 flags.DEFINE_string('dataset', 'movies', 'Directory to put the training data.')
-flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data '
-                                         'for unit testing.')
-
-
-# # The MNIST dataset has 10 classes, representing the digits 0 through 9.
-# num_classes = 10
-#
-# # The MNIST images are always 28x28 pixels.
-# IMAGE_SIZE = 28
-# data_dim = IMAGE_SIZE * IMAGE_SIZE
+flags.DEFINE_boolean('debug', False, 'If true, use small dataset ')
+flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data for unit testing.')
 
 
 def placeholder_inputs(batch_size, data_dim):
@@ -65,21 +56,21 @@ def placeholder_inputs(batch_size, data_dim):
   Returns:
     images_placeholder: Images placeholder.
     labels_placeholder: Labels placeholder.
+    :param data_dim: the dimension of our input data and output data
   """
     # Note that the shapes of the placeholders match the shapes of the full
     # image and label tensors, except the first dimension is now batch_size
     # rather than the full size of the train or test data sets.
-    if FLAGS.dataset == 'mnist':
-        images_placeholder = tf.placeholder(tf.float32, shape=(batch_size, data_dim))
-        labels_placeholder = tf.placeholder(tf.int32, shape=(batch_size))
-    else:
-        images_placeholder = tf.placeholder(tf.float32, shape=(batch_size, data_dim))
-        labels_placeholder = tf.placeholder(tf.float32, shape=(batch_size, data_dim))
 
-    return images_placeholder, labels_placeholder
+    shape = (batch_size, data_dim)
+    images_placeholder = tf.placeholder(tf.float32, shape=shape)
+    labels_placeholder = tf.placeholder(tf.float32, shape=shape)
+    mask_placeholder = tf.placeholder(tf.bool, shape=shape)
+
+    return images_placeholder, labels_placeholder, mask_placeholder
 
 
-def fill_feed_dict(data_set, images_pl, labels_pl):
+def fill_feed_dict(data_set, place_holders):
     """Fills the feed_dict for training the given step.
 
   A feed_dict takes the form of:
@@ -88,103 +79,52 @@ def fill_feed_dict(data_set, images_pl, labels_pl):
       ....
   }
 
-  Args:
-    data_set: The set of images and labels, from input_data.read_data_sets()
-    images_pl: The images placeholder, from placeholder_inputs().
-    labels_pl: The labels placeholder, from placeholder_inputs().
+    :param data_set: The set of movies and ratings, from data.DataSets()
+    :param place_holders: The three placeholders, from placeholder_inputs(),
+    including the inputs placeholder, the labels placeholder
+    -- identical to inputs placeholder except for the dropout values --
+    and the mask placeholder, from placeholder_inputs(),
+    which will receive a tensor of booleans for masking missing data values
 
-  Returns:
-    feed_dict: The feed dictionary mapping from placeholders to values.
+    :returns feed_dict: The feed dictionary mapping from placeholders to values.
   """
     # Create the feed_dict for the placeholders filled with the next
     # `batch size ` examples.
-    images_feed, labels_feed = data_set.next_batch(FLAGS.batch_size)
-    # FLAGS.fake_data)
-    feed_dict = {
-        images_pl: images_feed,
-        labels_pl: labels_feed,
-    }
+    images_feed, labels_feed, mask_feed = data_set.next_batch(FLAGS.batch_size)
+    feed_dict = {place_holders[i]: feed for i, feed
+                 in enumerate((images_feed, labels_feed, mask_feed))}
 
     return feed_dict
 
 
-def do_eval(sess,
-            eval_correct,
-            images_placeholder,
-            labels_placeholder,
-            data_set):
-    """Runs one evaluation against the full epoch of data.
-
-  Args:
-    sess: The session in which the model has been trained.
-    eval_correct: The Tensor that returns the number of correct predictions.
-    images_placeholder: The images placeholder.
-    labels_placeholder: The labels placeholder.
-    data_set: The set of images and labels to evaluate, from
-      input_data.read_data_sets().
-      :param data_set:
-      :param labels_placeholder:
-      :param eval_correct:
-      :param images_placeholder:
-      :param idxs_placeholder:
-  """
-    # And run one epoch of eval.
-    true_count = 0  # Counts the number of correct predictions.
-    steps_per_epoch = data_set.num_examples // FLAGS.batch_size
-    num_examples = steps_per_epoch * FLAGS.batch_size
-    if FLAGS.dataset == 'movies':
-        steps_per_epoch += 1
-        num_examples = steps_per_epoch * FLAGS.batch_size * data_set.data_dim
-    for step in xrange(steps_per_epoch):
-        feed_dict = fill_feed_dict(data_set, images_placeholder, labels_placeholder)
-        true_count += sess.run(eval_correct, feed_dict=feed_dict)
-    precision = true_count / num_examples
-    print('  Num examples: %d  Num correct: %d  Precision @ 1: %0.04f' %
-          (num_examples, true_count, precision))
-
-
 def run_training():
-    """Train MNIST for a number of steps."""
-    # Get the sets of images and labels for training, validation, and
-    # test on MNIST.
-    if FLAGS.dataset == 'mnist':
-        data_sets = input_data.read_data_sets(FLAGS.train_dir, FLAGS.fake_data)
-        data_dim = mnist.IMAGE_PIXELS
-    else:
-        data_sets = data.DataSets()
-        data_dim = data_sets.dim
+    """Train the autoencoder for a number of steps."""
+    # Get the sets of images and labels for training, validation, and test on data.
+    data_sets = data.DataSets(datafile='debug.dat') if FLAGS.debug else data.DataSets()
 
     # Tell TensorFlow that the model will be built into the default Graph.
     with tf.Graph().as_default():
+
         # Generate placeholders for the images and labels.
-        images_placeholder, labels_placeholder = placeholder_inputs(
-            FLAGS.batch_size, data_dim)
+        placeholders = placeholder_inputs(FLAGS.batch_size, data_sets.dim)
+        images_placeholder, labels_placeholder, mask_placeholder = placeholders
 
-        if FLAGS.dataset == 'mnist':
-            # Build a Graph that computes predictions from the inference model.
-            logits = mnist.inference(images_placeholder, FLAGS.hidden1, FLAGS.hidden2)
+        # Build a Graph that computes predictions from the inference model.
+        logits = ops.inference(images_placeholder,
+                               data_sets.dim,
+                               FLAGS.hidden1,
+                               FLAGS.hidden2)
 
-            # Add to the Graph the Ops for loss calculation.
-            loss = mnist.loss(logits, labels_placeholder)
+        # Add to the Graph the Ops for loss calculation.
+        loss = ops.loss(logits, labels_placeholder)
 
-            # Add to the Graph the Ops that calculate and apply gradients.
-            train_op = mnist.training(loss, FLAGS.learning_rate)
+        # Add to the Graph the Ops that calculate and apply gradients.
+        train_op = ops.training(loss, FLAGS.learning_rate)
 
-            # Add the Op to compare the logits to the labels during evaluation.
-            eval_correct = mnist.evaluation(logits, labels_placeholder)
-
-        else:
-            # Build a Graph that computes predictions from the inference model.
-            logits = ops.inference(images_placeholder, FLAGS.hidden1, FLAGS.hidden2)
-
-            # Add to the Graph the Ops for loss calculation.
-            loss = ops.loss(logits, labels_placeholder)
-
-            # Add to the Graph the Ops that calculate and apply gradients.
-            train_op = ops.training(loss, FLAGS.learning_rate)
-
-            # Add the Op to compare the logits to the labels during evaluation.
-            eval_correct = ops.evaluation(logits, labels_placeholder)
+        # Add the Op to compare the logits to the labels during evaluation.
+        eval_correct, eval_total = ops.evaluation(logits,
+                                                  labels_placeholder,
+                                                  mask_placeholder)
 
         # Build the summary operation based on the TF collection of Summaries.
         summary_op = tf.merge_all_summaries()
@@ -205,15 +145,30 @@ def run_training():
                                                 graph_def=sess.graph_def)
 
         # And then after everything is built, start the training loop.
-        steps_per_epoch = data_sets.train.num_examples // FLAGS.batch_size
+        steps_per_epoch = data_sets.train.num_examples // FLAGS.batch_size + 1
 
-        bar = data.progress_bar()
+
+        def do_eval(data_set):
+            """Runs one evaluation against the full epoch of data.
+              :param data_set: The data_set which we will use to retrieve batches
+          """
+            # And run one epoch of eval.
+            counts = np.zeros(2)
+            for _ in xrange(steps_per_epoch):
+                feed_dict = fill_feed_dict(data_set, placeholders)
+                run = sess.run([eval_correct, eval_total], feed_dict=feed_dict)
+                counts += run
+            correct, total = counts
+            print('  Num examples: %d  Num correct: %d  Precision @ 1: %0.04f' %
+                  (int(total), int(correct), correct / total))
+
+        bar = data.progress_bar('Training')
         start_time = time.time()
         for epoch in xrange(FLAGS.num_epochs):
             for step in xrange(steps_per_epoch):
                 # Fill a feed dictionary with the actual set of images and labels
                 # for this particular training step.
-                feed_dict = fill_feed_dict(data_sets.train, images_placeholder, labels_placeholder)
+                feed_dict = fill_feed_dict(data_sets.train, placeholders)
 
                 # Run one step of the model.  The return values are the activations
                 # from the `train_op` (which is discarded) and the `loss` Op.  To
@@ -224,13 +179,12 @@ def run_training():
                                          feed_dict=feed_dict)
 
                 # Write the summaries and print an overview fairly often.
-                # if step == 0:
-                # Print status to stdout.
-                # Save a checkpoint and evaluate the model periodically.
                 bar.next()
             duration = time.time() - start_time
+
+            # Print status to stdout.
             print('Epoch %d: loss = %.2f (%.3f sec)' % (epoch, loss_value, duration))
-            # start_time = time.time()
+
             # Update the events file.
             summary_str = sess.run(summary_op, feed_dict=feed_dict)
             summary_writer.add_summary(summary_str, epoch)
@@ -239,25 +193,13 @@ def run_training():
             if epoch % 10 == 0 or (epoch + 1) == FLAGS.num_epochs:
                 # Evaluate against the training set.
                 print('Training Data Eval:')
-                do_eval(sess,
-                        eval_correct,
-                        images_placeholder,
-                        labels_placeholder,
-                        data_sets.train)
+                do_eval(data_sets.train)
                 # Evaluate against the validation set.
                 print('Validation Data Eval:')
-                do_eval(sess,
-                        eval_correct,
-                        images_placeholder,
-                        labels_placeholder,
-                        data_sets.validation)
+                do_eval(data_sets.validation)
                 # Evaluate against the test set.
                 print('Test Data Eval:')
-                do_eval(sess,
-                        eval_correct,
-                        images_placeholder,
-                        labels_placeholder,
-                        data_sets.test)
+                do_eval(data_sets.test)
         bar.finish()
 
 
