@@ -55,9 +55,6 @@ def save_path(filename):
 
 CP_INFO = save_path('checkpoint')
 
-# Get the sets of images and labels for training, validation, and test on data.
-DATA_SETS = data.DataSets(datafile='debug.dat') if FLAGS.debug else data.DataSets()
-
 
 def placeholder_inputs(batch_size, data_dim):
     """Generate placeholder variables to represent the input tensors.
@@ -121,17 +118,20 @@ def restore_variables(sess):
 
 def run_training():
     """Train the autoencoder for a number of steps."""
+    # Get the sets of images and labels for training, validation, and test on data.
+    data_sets = data.DataSets(datafile='debug.dat') if FLAGS.debug else data.DataSets()
+
     # Tell TensorFlow that the model will be built into the default Graph.
     with tf.Graph().as_default():
 
         # Generate placeholders for the images and labels.
-        placeholders = placeholder_inputs(FLAGS.batch_size, DATA_SETS.dim)
+        placeholders = placeholder_inputs(FLAGS.batch_size, data_sets.dim)
         inputs_placeholder, labels_placeholder, mask_placeholder = placeholders
 
         # Build a Graph that computes predictions from the inference model.
         logits = ops.inference(inputs_placeholder,
                                FLAGS.dropout_rate,
-                               DATA_SETS.dim,
+                               data_sets.dim,
                                FLAGS.hidden1,
                                FLAGS.hidden2)
 
@@ -184,13 +184,15 @@ def run_training():
                   (int(total), int(correct), correct / total))
 
         # And then after everything is built, start the training loop.
-        steps_per_epoch = DATA_SETS.train.num_examples // FLAGS.batch_size
+        steps_per_epoch = data_sets.train.num_examples // FLAGS.batch_size
         start_time = time.time()
+
+        # TODO: make epoch a saved variable so that training picks up where it left off
         for epoch in xrange(FLAGS.num_epochs):
             for step in xrange(steps_per_epoch):
                 # Fill a feed dictionary with the actual set of images and labels
                 # for this particular training step.
-                feed_dict = fill_feed_dict(DATA_SETS.train, placeholders)
+                feed_dict = fill_feed_dict(data_sets.train, placeholders)
 
                 # Run one step of the model.  The return values are the activations
                 # from the `train_op` (which is discarded) and the `loss` Op.  To
@@ -220,13 +222,13 @@ def run_training():
                     if epoch % 10 == 0 or (epoch + 1) == FLAGS.num_epochs:
                         # Evaluate against the training set.
                         print('Training Data Eval:')
-                        do_eval(DATA_SETS.train)
+                        do_eval(data_sets.train)
                         # Evaluate against the validation set.
                         print('Validation Data Eval:')
-                        do_eval(DATA_SETS.validation)
+                        do_eval(data_sets.validation)
                         # Evaluate against the test set.
                         print('Test Data Eval:')
-                        do_eval(DATA_SETS.test)
+                        do_eval(data_sets.test)
 
 
 def predict(userid, movieid):
@@ -245,7 +247,7 @@ def predict(userid, movieid):
         # Restore variables from disk.
         restore_variables(sess)
         prediction = sess.run(logits)
-        return prediction[DATA_SETS.get_movie(movieid)]
+        return prediction[data.get_col(movieid)]
 
 
 def main(_):

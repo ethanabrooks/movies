@@ -1,7 +1,6 @@
 import argparse
 
 import subprocess
-
 import model
 
 import os
@@ -9,21 +8,21 @@ import os
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--train', action='store_true', help='train model from scratch')
-    parser.add_argument('-u', '--userid', type=int, help='user to predict ratings for')
-    parser.add_argument('-m', '--movieid', type=int, help='movie to predict ratings for')
+    parser.add_argument('-u', '--user_id', type=int, help='user to predict ratings for')
+    parser.add_argument('-m', '--movie_id', type=int, help='movie to predict ratings for')
     args = parser.parse_args()
 
     # check if user has entered both a username and a movie title
     username_and_movie_warning = 'Warning: the model cannot make predictions ' \
                                  'unless you enter both a username and a movie title.'
-    if args.username and not args.movie:
+    if args.user_id and not args.movie_id:
         print(username_and_movie_warning)
-        args.movie = input('Please enter the movie you would like '
-                           'to predict %s\'s ratings for: ' % args.username)
-    if args.movie and not args.username:
+        args.movie_id = input('Please enter the movie you would like '
+                           'to predict %s\'s ratings for: ' % args.user_id)
+    if args.movie_id and not args.user_id:
         print(username_and_movie_warning)
         args.username = input('Please enter the user whose rating of %s '
-                              'you would like to predict: ' % args.movie)
+                              'you would like to predict: ' % args.movie_id)
 
     # path to saved version of trained model
     load_path = os.path.join('checkpoints', 'checkpoint')
@@ -47,7 +46,7 @@ if __name__ == '__main__':
         subprocess.call(['python', 'model.py'])
 
     # predict a rating for the user
-    if args.userid and args.movie:
-        prediction = model.predict(args.username, args.movie)
+    if args.user_id and args.movie_id:
+        prediction = model.predict(args.user_id, args.movie_id)
         print("The model predicts that %s will give %s a %d"
-              % args.username, args.movie, prediction)
+              % args.user_id, args.movie_id, prediction)

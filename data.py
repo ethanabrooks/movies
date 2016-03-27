@@ -8,10 +8,13 @@ import scipy.sparse as sp
 import numpy as np
 from progress.bar import IncrementalBar
 
-TRAIN_DIR = 'data'
+DATA_DIR = 'data'
 # names of files where we will pickle and save objects for later use
 datasets_file = 'DataSets'
 movie_dic_file = 'movie_dic'
+RATINGS = 'ratings.dat'
+MAX_RATING = 5
+MIN_RATING = 0
 
 
 def progress_bar(message, max):
@@ -30,9 +33,52 @@ def num_lines(filepath):
     return num
 
 
+def normalize(rating):
+    """ necessary so that the model is not biased toward low ratings """
+    return rating - np.mean((MAX_RATING, MIN_RATING))
+
 
 def backup_path(filename):
-    return os.path.join(os.path.join('..', 'backup'), filename)
+    """ to be called from a child of the main directory """
+    return os.path.join('..', 'backup', filename)
+
+
+def data_path(filename):
+    """to be called from the main directory"""
+    return os.path.join(DATA_DIR, filename)
+
+
+def get_col(movie_id):
+    """
+    :param movie_id from preprocessed data
+    :returns column number in instance array
+    """
+    movie_dic = cPickle.load(movie_dic_file)
+    return movie_dic[movie_id]
+
+
+def get_ratings_with_iterator(user_id, movie_dic, file_iterator):
+    """
+    :returns movies and ratings associated with user_id
+    """
+    movies, ratings = ([] for _ in range(2))
+    for line in file_iterator:
+        user, movie, rating, _ = parse('{}::{}::{}::{}', line)
+        if user == user_id:  # if not first line of file
+            if movie not in movie_dic:
+                movie_dic[movie] = len(movie_dic)
+            movies.append(movie_dic[movie])
+            ratings.append(normalize(float(rating)))
+
+    return movies, ratings
+
+
+def get_ratings(user_id):
+    movie_dic = cPickle.load(movie_dic_file)
+    with open(RATINGS, 'r') as file_iterator:
+        cols, values = get_ratings_with_iterator(user_id, movie_dic, file_iterator)
+    rows = np.ones_like(cols)
+    return sp.csc_matrix((values, (rows, cols)), shape=[1, len(movie_dic)])
 
 
 class DataSets:
@@ -41,15 +87,15 @@ class DataSets:
     This class creates the other three and contains information common to all.
     """
 
-    def __init__(self, corrupt=1, datafile='ratings.dat'):
+    def __init__(self, corrupt=1, ratings=RATINGS):
         """
         Check if this has already been done. If so, load attributes from file.
         If not, go through the main ratings file, reformat the data, and split
         into train, test, and validation sets.
         """
-        if not os.path.isdir(TRAIN_DIR):
-            os.mkdir(TRAIN_DIR)  # create the train dir if it does not exist
-        os.chdir(TRAIN_DIR)  # this will make other operations easier
+        if not os.path.isdir(DATA_DIR):
+            os.mkdir(DATA_DIR)  # create the train dir if it does not exist
+        os.chdir(DATA_DIR)  # this will make other operations easier
 
         datasets = ['train', 'test', 'validation']
 
@@ -64,8 +110,7 @@ class DataSets:
 
         # if files are missing, try retrieving from backup
         if not data_already_processed():
-            backup = os.path.join('..', 'backup')
-            for filename in os.listdir(backup):
+            for filename in os.listdir(backup_path('')):
                 shutil.copyfile(backup_path(filename), filename)
 
         # check again
@@ -85,9 +130,9 @@ class DataSets:
 
             # movie_dic assigns a unique id to each movie such that all ids are contiguous
             movie_dic = {}
-            with open(datafile) as data:
+            with open(ratings) as data:
                 last_user = None
-                bar = progress_bar('Loading ratings data', num_lines(datafile))
+                bar = progress_bar('Loading ratings data', num_lines(ratings))
                 for i, line in enumerate(data):
                     user, movie, rating, _ = parse('{}::{}::{}::{}', line)
                     if user != last_user:  # if not first line of file
@@ -105,7 +150,7 @@ class DataSets:
                     if movie not in movie_dic:
                         movie_dic[movie] = len(movie_dic)
                     movies.append(movie_dic[movie])
-                    ratings.append(float(rating) - 2.5)
+                    ratings.append(normalize(float(rating)))
                     bar.next()
                 bar.finish()
             print("Loaded data.")
@@ -131,10 +176,6 @@ class DataSets:
         for dataset in self.datasets:
             self.dim = dataset.dim = dim
             dataset.file_handle.close()
-
-    def get_movie(self, movie_id):
-        movie_dic = cPickle.load(movie_dic_file)
-        return movie_dic[movie_id]
 
 
 class DataSet:
@@ -164,7 +205,7 @@ class DataSet:
         values, rows, cols = ([] for _ in range(3))
 
         if self.file_handle.closed:
-            self.file_handle = open(os.path.join(TRAIN_DIR, self.datafile), 'r')
+            self.file_handle = open(os.path.join(DATA_DIR, self.datafile), 'r')
             self.file_handle.seek(0)
 
         for i, line in enumerate(self.file_handle):
@@ -201,7 +242,3 @@ class DataSet:
             sp.csc_matrix((vals, (rows, cols)), shape=(batch_size, self.dim)).toarray()
             for vals in (values, corrupted_values, np.ones_like(values)))
         return inputs, targets, is_data_mask
-
-
-def get_ratings(userid):
-    return None
