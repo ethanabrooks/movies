@@ -260,21 +260,6 @@ def predict(userid, input_data):
         return data.unnormalize(predictions)
 
 
-def predict_for_movie(user_id, movie_id):
-    input_data = data.Data()
-    predictions = predict(user_id, input_data)
-    return predictions[input_data.get_col(movie_id)]
-
-
-def predict_top_n(user_id, n):
-    input_data = data.Data()
-    predictions = predict(user_id, input_data)
-    # if args.top = n, this function ensures that the top n elements are
-    # on the far right of the array
-    partial_sort = np.argpartition(predictions, -n)
-    return partial_sort[-n:]
-
-
 def main(_):
     run_training()
 

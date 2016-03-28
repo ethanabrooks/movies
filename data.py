@@ -12,6 +12,7 @@ from parse import parse
 
 DATA_DIR = 'data'
 BACKUP_DIR = 'backup'
+
 # names of files where we will pickle and save objects for later use
 datasets_file = 'DataObj'
 RATINGS = 'ratings.dat'
@@ -55,6 +56,10 @@ def backup_path(filename):
 def data_path(filename):
     """to be called from the main directory"""
     return os.path.join(DATA_DIR, filename)
+
+
+def read_cols_vals(line):
+    return np.fromstring(line, sep=' ').reshape(2, -1)
 
 
 class FilePointer:
@@ -124,11 +129,12 @@ class Data:
                 self.__dict__[name] = dataset
                 self.datasets.append(dataset)
 
-            # movie_dic assigns a unique id to each movie such that all ids are contiguous
+            # id_to_column assigns each movie to a column
+            # such that all columns are contiguous
             self.id_to_column = {}
             self.user_dic = {}
 
-            # we need to convert data into a more usable form
+            # convert data into a more usable form
             # and split into train, validation, and test
             with open(ratings) as data:
                 last_user = None
@@ -137,24 +143,23 @@ class Data:
                     user, movie, rating, _ = parse('{:d}::{:d}::{:g}:{}', line)
                     if user != last_user:  # if we're on to a new user
                         if last_user is not None:
-                            self.write_instance(last_user, movies, ratings)
+                            self.write_instance(last_user, columns, ratings)
 
                         # clean slate for next user
-                        movies, ratings = ([] for _ in range(2))
+                        columns, ratings = ([] for _ in range(2))
                         last_user = user
 
-                    # we don't want to use the original movie ids in the file
-                    # because they may not be contiguous and then our tensors
-                    # would be unnecessarily large. The movie_dic takes care
-                    # of this problem:
+                    # this is how id_to_column ensures contiguous columns
                     if movie not in self.id_to_column:
                         self.id_to_column[movie] = len(self.id_to_column)
 
-                    movies.append(self.id_to_column[movie])
+                    columns.append(self.id_to_column[movie])
                     ratings.append(normalize(rating))
-                    bar.next()
+
+                    # progress bar
                 bar.finish()
-                self.write_instance(user, movies, ratings)
+
+                self.write_instance(user, columns, ratings)
             print("Loaded data.")
 
             for dataset in self.datasets:
@@ -165,14 +170,15 @@ class Data:
             for dataset in self.datasets:
                 dataset.set_dim(self.dim)
 
-            self.name_to_column = {}
-            self.column_to_name = {}
-            with open(movie_names) as datafile:
-                for line in datafile:
-                    id, name, _ = parse('{:d}::{} ({}', line)
-                    column = self.id_to_column[id]
-                    self.name_to_column[name] = column
-                    self.column_to_name[column] = name
+        self.name_to_column = {}
+        self.column_to_name = {}
+        with open(movie_names) as datafile:
+            for line in datafile:
+                id, name, _ = parse('{:d}::{} ({}', line)
+                if id in self.id_to_column:
+                    columns = self.id_to_column[id]
+                    self.name_to_column[name] = columns
+                    self.column_to_name[columns] = name
 
             # save self to file
             with open(datasets_file, 'w') as fp:
@@ -215,7 +221,7 @@ class Data:
             print('Sorry, no user with that id.')
             exit(0)
         line = self.user_dic[user_id].readline()
-        cols, values = np.fromstring(line, sep=' ').reshape(2, -1)
+        cols, values = read_cols_vals(line)
         rows = np.zeros_like(cols)
         return sp.csc_matrix((values, (rows, cols)),
                              dtype='float32',
@@ -259,9 +265,8 @@ class DataSet:
             self.file_handle.seek(0)
 
         for i, line in enumerate(self.file_handle):
-            fromstring = np.fromstring(line, sep=' ')
             try:  # in case we hit a blip, we don't want to terminate training
-                movies, ratings = fromstring.reshape(2, -1)
+                movies, ratings = read_cols_vals(line)
                 values.append(ratings)
                 cols.append(movies)
                 rows.append(np.repeat(i, movies.size))

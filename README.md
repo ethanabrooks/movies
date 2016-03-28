@@ -17,3 +17,9 @@ Changes to the functionality of the program should only affect main.py,
 as long as they make use of the model's output of a list of predicted ratings
 across the range of movies. (Most) changes to the dataset should only affect
 data.py, and changes to the architecture do only affect model.py and ops.py.
+
+Notable features:
+- The model only has to preprocess data once. After that, it automatically
+  detects the necessary files and loads metadata into memory. (To reload data, run ``python data.py reload``)
+- The model continuously saves its parameters to memory so that it can pickup
+  training where it left off.

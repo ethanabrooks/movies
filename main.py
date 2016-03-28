@@ -34,12 +34,13 @@ parser.add_argument('-t', '--top', type=int, help='the top [n] highest rated mov
                                                   'predicted for user')
 args = parser.parse_args()
 
+# import statement down here so that command line args aren't intercepted by tf.flags
 import model
 
 # check if user has entered both a username and a movie title
 if not args.movie and not args.top:
-    args.movie = prompt_for_int('Please enter the movie you would like '
-                                   'to predict ratings for: ')
+    args.movie = raw_input('Please enter the movie you would like '
+                           'to predict ratings for: ')
 if not args.user_id:
     args.user_id = prompt_for_int('Please enter the user whose rating of %s '
                                   'you would like to predict: ' % args.movie)
@@ -63,7 +64,10 @@ if args.user_id and (args.movie or args.top):
     output = model.predict(args.user_id, input_data)
     if args.movie:
         rating = output[0, input_data.get_col(args.movie)]
-        num_stars = int(round(rating*2))
+        print(rating)
+
+        # purty stars
+        num_stars = int(round(rating * 2))
         stars = ''.join(u'\u2605' for _ in range(num_stars))
         stars += ''.join(u'\u2606' for _ in range(10 - num_stars))
 
@@ -71,9 +75,11 @@ if args.user_id and (args.movie or args.top):
               "movie number %s: %s"
               % (args.user_id, args.movie, stars))
     else:
+        # if args.top = n, this function ensures that the top n elements are
+        # on the far right of the array
         partial_sort = np.argpartition(output, -args.top)
         top_n = partial_sort[0, -args.top:]
-        print("The top %d movies for user %s will be: "
+        print("The model predicts that the top %d movies for user %s will be: "
               % (args.top, args.user_id))
         for n in top_n.flatten():
-            print(n)
+            print(input_data.column_to_name(n))
