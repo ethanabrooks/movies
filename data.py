@@ -3,9 +3,10 @@ import shutil
 import cPickle
 
 import os
-from parse import parse
 import scipy.sparse as sp
 import numpy as np
+import main
+from parse import parse
 from progress.bar import IncrementalBar
 
 DATA_DIR = 'data'
@@ -98,6 +99,8 @@ class Data:
                 self.__dict__.update(cPickle.load(fp))
 
         else:  # if data has not already been loaded
+            main.check_if_ok_to_continue('Data has not been loaded. Load data now '
+                                         '(this may take over 10 minutes)? ')
 
             # create the three datasets
             self.datasets = []
@@ -168,8 +171,7 @@ class Data:
         pos = dataset.new_instance(movies, ratings)
 
         # save a "pointer" to the users position in the file
-        self.user_dic[user] = FilePointer(dataset.datafile, pos)
-
+        self.user_dic[int(user)] = FilePointer(dataset.datafile, pos)
 
     def get_col(self, movie_id):
         """
@@ -192,8 +194,10 @@ class Data:
         readline = fp.readline()
         fromstring = np.fromstring(readline, sep=' ')
         cols, values = fromstring.reshape(2, -1)
-        rows = np.ones_like(cols)
-        return sp.csc_matrix((values, (rows, cols)), shape=[1, self.dim])
+        rows = np.zeros_like(cols)
+        return sp.csc_matrix((values, (rows, cols)),
+                             dtype='float32',
+                             shape=[1, self.dim]).toarray()
 
 
 class DataSet:
@@ -263,3 +267,8 @@ class DataSet:
             sp.csc_matrix((vals, (rows, cols)), shape=(batch_size, self.dim)).toarray()
             for vals in (values, corrupted_values, np.ones_like(values)))
         return inputs, targets, is_data_mask
+
+    if __name__ == '__main__':
+        import data
+
+        data.Data()
