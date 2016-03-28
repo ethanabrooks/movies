@@ -11,8 +11,11 @@ are missing, the program will prompt you for them.
 
 The main goal of this design (besides just getting TensorFlow to work!) was to
 allow the program's three main functions to operate independently:
+
 1. interacting with the user / making predictions (handled by main.py)
+
 2. loading data (handled by data.py)
+
 3. training the model (handled by model.py and ops.py)
 
 Changes to the functionality of the program should only affect main.py,
