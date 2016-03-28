@@ -3,7 +3,6 @@ import argparse
 import subprocess
 
 import data
-import model
 
 import os
 
@@ -30,8 +29,6 @@ def prompt_for_int(prompt):
 
 
 if __name__ == '__main__':
-    import main
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--train', action='store_true', help='train model from scratch')
     parser.add_argument('-u', '--user_id', type=int, help='user to predict ratings for')
@@ -40,10 +37,12 @@ if __name__ == '__main__':
                                                       'predicted for user')
     args = parser.parse_args()
 
+    import model
+
     # check if user has entered both a username and a movie title
     if not args.movie_id and not args.top:
         args.movie_id = prompt_for_int('Please enter the movie you would like '
-                                       'to predict %s\'s ratings for: ' % args.user_id)
+                                       'to predict ratings for: ')
     if not args.user_id:
         args.user_id = prompt_for_int('Please enter the user whose rating of %s '
                                       'you would like to predict: ' % args.movie_id)
@@ -54,7 +53,7 @@ if __name__ == '__main__':
     # check if a model has been previously trained
     already_trained = os.path.exists(load_path)
     if not (args.train or already_trained):
-        main.check_if_ok_to_continue('Model has not been trained. '
+        check_if_ok_to_continue('Model has not been trained. '
                                      'Train it now (this may take several hours)? ')
     args.train = True
 
@@ -63,8 +62,7 @@ if __name__ == '__main__':
 
     # predict a rating for the user
     if args.user_id and args.movie_id:
-        data_data = data.Data(ratings='debug.dat')
-        data_data.get_ratings(2)
+        data_data = data.Data()
         prediction = model.predict(args.user_id, args.movie_id, data_data)
         print("The model predicts that %s will give %s a %d"
               % args.user_id, args.movie_id, prediction)

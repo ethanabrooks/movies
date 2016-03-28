@@ -2,6 +2,8 @@ import random
 import shutil
 import cPickle
 
+import sys
+
 import os
 import scipy.sparse as sp
 import numpy as np
@@ -17,6 +19,7 @@ user_dic_file = 'user_dic'
 RATINGS = 'ratings.dat'
 MAX_RATING = 5
 MIN_RATING = 0
+random.seed(7)  # lucky number 7
 
 
 def progress_bar(message, max):
@@ -66,7 +69,7 @@ class Data:
     This class creates the other three and contains information common to all.
     """
 
-    def __init__(self, corrupt=1, ratings=RATINGS):
+    def __init__(self, corrupt=1, debug=False, ratings=RATINGS):
         """
         Check if this has already been done. If so, load attributes from file.
         If not, go through the main ratings file, reformat the data, and split
@@ -99,8 +102,11 @@ class Data:
                 self.__dict__.update(cPickle.load(fp))
 
         else:  # if data has not already been loaded
-            main.check_if_ok_to_continue('Data has not been loaded. Load data now '
-                                         '(this may take over 10 minutes)? ')
+            if not debug:
+                main.check_if_ok_to_continue('Data has not been loaded. Load data now '
+                                             '(this may take over 10 minutes)? ')
+            else:
+                ratings = 'debug.dat'
 
             # create the three datasets
             self.datasets = []
@@ -158,7 +164,6 @@ class Data:
         os.chdir('..')  # return to main dir
 
     def write_instance(self, user, movies, ratings):
-        random.seed(7)  # lucky number 7
         random_num = random.random()
         if random_num < .7:  # 70% of the rime
             dataset = self.train
@@ -271,4 +276,7 @@ class DataSet:
     if __name__ == '__main__':
         import data
 
-        data.Data()
+        if len(sys.argv) > 1 and sys.argv[1] == 'debug':
+            data.Data(debug=True)
+        else:
+            data.Data()

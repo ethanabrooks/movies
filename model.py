@@ -238,6 +238,7 @@ def predict(userid, movieid, input_data):
     with tf.Graph().as_default():
         # Build a Graph that computes predictions from the inference model.
         logits = ops.inference(tf.constant(instance),
+                               1,  # no dropout
                                input_data.dim,
                                FLAGS.hidden1,
                                FLAGS.hidden2)

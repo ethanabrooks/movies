@@ -36,7 +36,7 @@ import tensorflow as tf
 import numpy as np
 
 
-def inference(inputs, data_dim, hidden1_units, hidden2_units):
+def inference(inputs, keep_prob, data_dim, hidden1_units, hidden2_units):
     """Build the MNIST model up to where it may be used for inference.
 
   Args:
@@ -66,7 +66,7 @@ def inference(inputs, data_dim, hidden1_units, hidden2_units):
         biases = tf.Variable(tf.zeros([hidden2_units]),
                              name='biases')
         hidden2 = tf.nn.relu(tf.matmul(hidden1, weights) + biases)
-        hidden2_dropout = tf.nn.dropout(hidden2, tf.constant(.8))
+        hidden2_dropout = tf.nn.dropout(hidden2, tf.constant(keep_prob))
     # Linear
     with tf.name_scope('softmax_linear'):
         weights = tf.Variable(
