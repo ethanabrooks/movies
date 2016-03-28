@@ -34,6 +34,17 @@ from parse import parse
 
 flags = tf.app.flags
 FLAGS = flags.FLAGS
+
+# print(flags)
+#
+# defaults = [
+#     (float, 'learning_rate', 0.0001, 'Initial learning rate')
+# ]
+#
+# for typ, flag_name, default_value, docstring:
+#     flags._define_helper(flag_name, default_value, docstring)
+#     defaults[flag_name] = default_value
+
 flags.DEFINE_float('learning_rate', 0.0001, 'Initial learning rate.')
 flags.DEFINE_float('dropout_rate', .9, 'Probability of keeping nodes during dropout.')
 flags.DEFINE_integer('num_epochs', 2000, 'Number of epochs to run trainer.')
@@ -167,7 +178,6 @@ def run_training():
         summary_writer = tf.train.SummaryWriter(FLAGS.summary_dir,
                                                 graph_def=sess.graph_def)
 
-
         def do_eval(data_set):
             """Runs one evaluation against the full epoch of data.
               :param data_set: The data_set which we will use to retrieve batches
@@ -231,7 +241,7 @@ def run_training():
                         do_eval(data_sets.test)
 
 
-def predict(userid, movieid, input_data):
+def predict(userid, input_data):
     # Create a loader for loading training checkpoints.
     instance = input_data.get_ratings(userid)
 
@@ -247,8 +257,22 @@ def predict(userid, movieid, input_data):
         # Restore variables from disk.
         restore_variables(sess)
         predictions = sess.run(logits)
-        prediction = predictions[input_data.get_col(movieid)]
-        return data.unnormalize(prediction)
+        return data.unnormalize(predictions)
+
+
+def predict_for_movie(user_id, movie_id):
+    input_data = data.Data()
+    predictions = predict(user_id, input_data)
+    return predictions[input_data.get_col(movie_id)]
+
+
+def predict_top_n(user_id, n):
+    input_data = data.Data()
+    predictions = predict(user_id, input_data)
+    # if args.top = n, this function ensures that the top n elements are
+    # on the far right of the array
+    partial_sort = np.argpartition(predictions, -n)
+    return partial_sort[-n:]
 
 
 def main(_):

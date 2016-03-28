@@ -7,18 +7,18 @@ import sys
 import os
 import scipy.sparse as sp
 import numpy as np
-import main
-from parse import parse
 from progress.bar import IncrementalBar
+from parse import parse
 
 DATA_DIR = 'data'
+BACKUP_DIR = 'backup'
 # names of files where we will pickle and save objects for later use
-datasets_file = 'DataSets'
-movie_dic_file = 'movie_dic'
-user_dic_file = 'user_dic'
+datasets_file = 'DataObj'
 RATINGS = 'ratings.dat'
+MOVIE_NAMES = 'movies.dat'
 MAX_RATING = 5
 MIN_RATING = 0
+DIM = 10677
 random.seed(7)  # lucky number 7
 
 
@@ -49,7 +49,7 @@ def unnormalize(rating):
 
 def backup_path(filename):
     """ to be called from a child of the main directory """
-    return os.path.join('..', 'backup', filename)
+    return os.path.join('..', BACKUP_DIR, filename)
 
 
 def data_path(filename):
@@ -62,6 +62,11 @@ class FilePointer:
         self.filename = filename
         self.offset = offset
 
+    def readline(self):
+        fp = open(data_path(self.filename), 'r')
+        fp.seek(self.offset)
+        return fp.readline()
+
 
 class Data:
     """
@@ -69,16 +74,23 @@ class Data:
     This class creates the other three and contains information common to all.
     """
 
-    def __init__(self, corrupt=1, debug=False, ratings=RATINGS):
+    def __init__(self, corrupt=1,
+                 debug=False,
+                 reload=False,
+                 ratings=RATINGS,
+                 movie_names=MOVIE_NAMES):
+
         """
         Check if this has already been done. If so, load attributes from file.
         If not, go through the main ratings file, reformat the data, and split
         into train, test, and validation sets.
         """
+        # create required dirs if they do not exist
         if not os.path.isdir(DATA_DIR):
-            os.mkdir(DATA_DIR)  # create the train dir if it does not exist
+            os.mkdir(DATA_DIR)
+        if not os.path.isdir(BACKUP_DIR):
+            os.mkdir(BACKUP_DIR)
         os.chdir(DATA_DIR)  # this will make other operations easier
-
         datasets = ['train', 'test', 'validation']
 
         # these files are the prerequisites for not reprocessing data
@@ -96,16 +108,13 @@ class Data:
                 shutil.copyfile(backup_path(filename), filename)
 
         # check again
-        if data_already_processed():
+        if data_already_processed() and not reload:
             # load self from file
             with open(datasets_file, 'rb') as fp:
                 self.__dict__.update(cPickle.load(fp))
 
         else:  # if data has not already been loaded
-            if not debug:
-                main.check_if_ok_to_continue('Data has not been loaded. Load data now '
-                                             '(this may take over 10 minutes)? ')
-            else:
+            if debug:
                 ratings = 'debug.dat'
 
             # create the three datasets
@@ -116,7 +125,7 @@ class Data:
                 self.datasets.append(dataset)
 
             # movie_dic assigns a unique id to each movie such that all ids are contiguous
-            self.movie_dic = {}
+            self.id_to_column = {}
             self.user_dic = {}
 
             # we need to convert data into a more usable form
@@ -125,7 +134,7 @@ class Data:
                 last_user = None
                 bar = progress_bar('Loading ratings data', num_lines(ratings))
                 for i, line in enumerate(data):
-                    user, movie, rating, _ = parse('{}::{}::{}::{}', line)
+                    user, movie, rating, _ = parse('{:d}::{:d}::{:g}:{}', line)
                     if user != last_user:  # if we're on to a new user
                         if last_user is not None:
                             self.write_instance(last_user, movies, ratings)
@@ -134,14 +143,15 @@ class Data:
                         movies, ratings = ([] for _ in range(2))
                         last_user = user
 
-                    if movie not in self.movie_dic:
-                        # we don't want to use the original movie ids in the file
-                        # because they may not be contiguous and then our tensors
-                        # would be unnecessarily large
-                        self.movie_dic[movie] = len(self.movie_dic)
+                    # we don't want to use the original movie ids in the file
+                    # because they may not be contiguous and then our tensors
+                    # would be unnecessarily large. The movie_dic takes care
+                    # of this problem:
+                    if movie not in self.id_to_column:
+                        self.id_to_column[movie] = len(self.id_to_column)
 
-                    movies.append(self.movie_dic[movie])
-                    ratings.append(normalize(float(rating)))
+                    movies.append(self.id_to_column[movie])
+                    ratings.append(normalize(rating))
                     bar.next()
                 bar.finish()
                 self.write_instance(user, movies, ratings)
@@ -151,7 +161,18 @@ class Data:
                 dataset.file_handle.close()
 
             # the dimension of each instance
-            self.dim = len(self.movie_dic)
+            self.dim = len(self.id_to_column)
+            for dataset in self.datasets:
+                dataset.set_dim(self.dim)
+
+            self.name_to_column = {}
+            self.column_to_name = {}
+            with open(movie_names) as datafile:
+                for line in datafile:
+                    id, name, _ = parse('{:d}::{} ({}', line)
+                    column = self.id_to_column[id]
+                    self.name_to_column[name] = column
+                    self.column_to_name[column] = name
 
             # save self to file
             with open(datasets_file, 'w') as fp:
@@ -176,14 +197,14 @@ class Data:
         pos = dataset.new_instance(movies, ratings)
 
         # save a "pointer" to the users position in the file
-        self.user_dic[int(user)] = FilePointer(dataset.datafile, pos)
+        self.user_dic[user] = FilePointer(dataset.datafile, pos)
 
-    def get_col(self, movie_id):
+    def get_col(self, movie):
         """
         :param movie_id from preprocessed data
         :returns column number in instance array
         """
-        return self.movie_dic[movie_id]
+        return self.name_to_column[movie]
 
     def get_ratings(self, user_id):
         """
@@ -193,12 +214,8 @@ class Data:
         if user_id not in self.user_dic:
             print('Sorry, no user with that id.')
             exit(0)
-        fileptr = self.user_dic[user_id]
-        fp = open(data_path(fileptr.filename), 'r')
-        fp.seek(fileptr.offset)
-        readline = fp.readline()
-        fromstring = np.fromstring(readline, sep=' ')
-        cols, values = fromstring.reshape(2, -1)
+        line = self.user_dic[user_id].readline()
+        cols, values = np.fromstring(line, sep=' ').reshape(2, -1)
         rows = np.zeros_like(cols)
         return sp.csc_matrix((values, (rows, cols)),
                              dtype='float32',
@@ -225,6 +242,9 @@ class DataSet:
         pos = self.file_handle.tell()
         np.savetxt(self.file_handle, data, fmt='%1.1f')
         return pos
+
+    def set_dim(self, dim):
+        self.dim = dim
 
     def next_batch(self, batch_size):
         """
@@ -273,10 +293,13 @@ class DataSet:
             for vals in (values, corrupted_values, np.ones_like(values)))
         return inputs, targets, is_data_mask
 
-    if __name__ == '__main__':
-        import data
 
-        if len(sys.argv) > 1 and sys.argv[1] == 'debug':
-            data.Data(debug=True)
-        else:
-            data.Data()
+if __name__ == '__main__':
+    import data
+
+    if len(sys.argv) > 1 and sys.argv[1] == 'debug':
+        data.Data(debug=True)
+    elif len(sys.argv) > 1 and sys.argv[1] == 'reload':
+        data.Data(reload=True)
+    else:
+        data.Data()
