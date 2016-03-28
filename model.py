@@ -241,15 +241,12 @@ def run_training():
                         do_eval(data_sets.test)
 
 
-def predict(userid, input_data):
-    # Create a loader for loading training checkpoints.
-    instance = input_data.get_ratings(userid)
-
+def predict(instance, dat):
     with tf.Graph().as_default():
         # Build a Graph that computes predictions from the inference model.
         logits = ops.inference(tf.constant(instance),
                                1,  # no dropout
-                               input_data.dim,
+                               dat.dim,
                                FLAGS.hidden1,
                                FLAGS.hidden2)
 

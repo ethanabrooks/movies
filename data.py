@@ -119,6 +119,17 @@ class Data:
                 self.__dict__.update(cPickle.load(fp))
 
         else:  # if data has not already been loaded
+            # double check that we want to continue (this wipes existing data)
+            response = raw_input('Are you sure you want to process data? ')
+            while True:
+                if response in 'Yes yes':
+                    break
+                elif response in 'No no':
+                    print('Ok. Goodbye.')
+                    exit(0)
+                else:
+                    response = raw_input('Please enter [y|n]. ')
+
             if debug:
                 ratings = 'debug.dat'
 
@@ -170,15 +181,15 @@ class Data:
             for dataset in self.datasets:
                 dataset.set_dim(self.dim)
 
-        self.name_to_column = {}
-        self.column_to_name = {}
-        with open(movie_names) as datafile:
-            for line in datafile:
-                id, name, _ = parse('{:d}::{} ({}', line)
-                if id in self.id_to_column:
-                    columns = self.id_to_column[id]
-                    self.name_to_column[name] = columns
-                    self.column_to_name[columns] = name
+            self.name_to_column = {}
+            self.column_to_name = {}
+            with open(movie_names) as datafile:
+                for line in datafile:
+                    id, name, _ = parse('{:d}::{} ({}', line)
+                    if id in self.id_to_column:
+                        columns = self.id_to_column[id]
+                        self.name_to_column[name] = columns
+                        self.column_to_name[columns] = name
 
             # save self to file
             with open(datasets_file, 'w') as fp:

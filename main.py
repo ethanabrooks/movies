@@ -60,11 +60,13 @@ if args.train:
 
 # predict a rating for the user
 if args.user_id and (args.movie or args.top):
-    input_data = data.Data()
-    output = model.predict(args.user_id, input_data)
+    dat = data.Data()
+    instance = dat.get_ratings(args.user_id)
+    ratings = data.unnormalize(instance.ravel())
+    output = model.predict(instance, dat).ravel()
     if args.movie:
-        rating = output[0, input_data.get_col(args.movie)]
-        print(rating)
+        col = dat.get_col(args.movie)
+        rating = output[col]
 
         # purty stars
         num_stars = int(round(rating * 2))
@@ -72,14 +74,20 @@ if args.user_id and (args.movie or args.top):
         stars += ''.join(u'\u2606' for _ in range(10 - num_stars))
 
         print("The model predicts that user %s will rate "
-              "movie number %s: %s"
-              % (args.user_id, args.movie, stars))
+              "movie number %s: "
+              % (args.user_id, args.movie))
+        print('%1.2f / 5' % rating)
+        print(stars)
+        print('actual rating: %1.1f' % ratings[col])
     else:
-        # if args.top = n, this function ensures that the top n elements are
-        # on the far right of the array
+        # if args.top = n, argpartition ensures that the top n elements are
+        # on the far right of the array (sparing us from sorting the whole thing)
         partial_sort = np.argpartition(output, -args.top)
-        top_n = partial_sort[0, -args.top:]
+        top_n = partial_sort[-args.top:].tolist()
+        top_n.sort(key=output.__getitem__)  # sort by rating
         print("The model predicts that the top %d movies for user %s will be: "
               % (args.top, args.user_id))
-        for n in top_n.flatten():
-            print(input_data.column_to_name(n))
+        for n in top_n:
+            print('%s: %1.2f' % (dat.column_to_name[n], output[n]))
+            print('actual rating: %1.1f' % ratings[n])
+            print
