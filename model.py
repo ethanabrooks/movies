@@ -147,7 +147,7 @@ def run_training():
                                FLAGS.hidden2)
 
         # Add to the Graph the Ops for loss calculation.
-        loss = ops.loss(logits, labels_placeholder)
+        loss = ops.loss(logits, labels_placeholder, mask_placeholder)
 
         # Add to the Graph the Ops that calculate and apply gradients.
         train_op = ops.training(loss, FLAGS.learning_rate)
@@ -157,6 +157,10 @@ def run_training():
                                                   labels_placeholder,
                                                   mask_placeholder)
 
+        # keep track of the epoch
+        count = tf.Variable(0)
+        increment = tf.count_up_to(count, FLAGS.num_epochs)
+
         # Build the summary operation based on the TF collection of Summaries.
         summary_op = tf.merge_all_summaries()
 
@@ -165,11 +169,13 @@ def run_training():
 
         # Create a session for running Ops on the Graph.
         sess = tf.Session()
-        # sess = tf.InteractiveSession()
 
         # Run the Op to initialize the variables.
         if os.path.exists(CP_INFO):
             restore_variables(sess)
+
+            # redo epoch that we last quit in the middle of
+            sess.run(count.assign_sub(1))
         else:
             init = tf.initialize_all_variables()
             sess.run(init)
@@ -198,7 +204,8 @@ def run_training():
         start_time = time.time()
 
         # TODO: make epoch a saved variable so that training picks up where it left off
-        for epoch in xrange(FLAGS.num_epochs):
+        for _ in xrange(FLAGS.num_epochs):
+            epoch = sess.run(increment)
             for step in xrange(steps_per_epoch):
                 # Fill a feed dictionary with the actual set of images and labels
                 # for this particular training step.
@@ -262,4 +269,8 @@ def main(_):
 
 
 if __name__ == '__main__':
-    tf.app.run()
+    try:
+        tf.app.run()
+    except KeyboardInterrupt:
+        print('\nGoodbye.')
+        exit(0)

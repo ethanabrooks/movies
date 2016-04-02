@@ -4,7 +4,6 @@ import numpy as np
 import os
 import data
 
-
 def check_if_ok_to_continue(prompt):
     response = raw_input(prompt)
     while True:
@@ -56,7 +55,11 @@ if not (args.train or already_trained):
     args.train = True
 
 if args.train:
-    model.run_training()
+    try:
+        model.run_training()
+    except KeyboardInterrupt:
+        print('\nGoodbye')
+        exit(0)
 
 # predict a rating for the user
 if args.user_id and (args.movie or args.top):
@@ -88,6 +91,6 @@ if args.user_id and (args.movie or args.top):
         print("The model predicts that the top %d movies for user %s will be: "
               % (args.top, args.user_id))
         for n in top_n:
+            print
             print('%s: %1.2f' % (dat.column_to_name[n], output[n]))
             print('actual rating: %1.1f' % ratings[n])
-            print
