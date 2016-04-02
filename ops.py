@@ -36,7 +36,7 @@ import tensorflow as tf
 import numpy as np
 
 
-def inference(inputs, keep_prob, data_dim, hidden1_units, hidden2_units):
+def inference(inputs, embedding_size, embedding_dim, hidden1_units, hidden2_units, keep_prob=.8):
     """Build the MNIST model up to where it may be used for inference.
 
   Args:
@@ -46,17 +46,24 @@ def inference(inputs, keep_prob, data_dim, hidden1_units, hidden2_units):
 
   Returns:
     softmax_linear: Output tensor with the computed logits.
+    :param embedding_size:
   """
+    # Embeddings
+    embeddings = tf.Variable(
+        tf.random_uniform([embedding_dim, embedding_size], -1.0, 1.0))
+
+    input_emb = tf.nn.embedding_lookup(embeddings, inputs)
+
     # Hidden 1
     with tf.name_scope('hidden1'):
-        shape = [data_dim, hidden1_units]
+        shape = [embedding_dim, hidden1_units]
         weights = tf.Variable(
             tf.truncated_normal(shape,
-                                stddev=1.0 / math.sqrt(data_dim)),
+                                stddev=1.0 / math.sqrt(embedding_dim)),
             name='weights')
         biases = tf.Variable(tf.zeros([hidden1_units]),
                              name='biases')
-        hidden1 = tf.nn.relu(tf.matmul(inputs, weights) + biases)
+        hidden1 = tf.nn.relu(tf.matmul(input_emb, weights) + biases)
     # Hidden 2
     with tf.name_scope('hidden2'):
         weights = tf.Variable(
@@ -70,10 +77,10 @@ def inference(inputs, keep_prob, data_dim, hidden1_units, hidden2_units):
     # Linear
     with tf.name_scope('softmax_linear'):
         weights = tf.Variable(
-            tf.truncated_normal([hidden2_units, data_dim],
+            tf.truncated_normal([hidden2_units, embedding_dim],
                                 stddev=1.0 / math.sqrt(float(hidden2_units))),
             name='weights')
-        biases = tf.Variable(tf.zeros([data_dim]), name='biases')
+        biases = tf.Variable(tf.zeros([embedding_dim]), name='biases')
         logits = tf.matmul(hidden2_dropout, weights) + biases
     return logits
 

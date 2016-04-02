@@ -140,9 +140,10 @@ class Data:
                 self.__dict__[name] = dataset
                 self.datasets.append(dataset)
 
-            # id_to_column assigns each movie to a column
-            # such that all columns are contiguous
-            self.id_to_column = {}
+            # id_to_column assigns each movie to an embeddings index
+            # we don't want to use the id assigned to the movie because
+            # these ids are not necessarily contiguous
+            self.id_to_idx = {}
             self.user_dic = {}
 
             # convert data into a more usable form
@@ -160,11 +161,11 @@ class Data:
                         columns, ratings = ([] for _ in range(2))
                         last_user = user
 
-                    # this is how id_to_column ensures contiguous columns
-                    if movie not in self.id_to_column:
-                        self.id_to_column[movie] = len(self.id_to_column)
+                    # this is how id_to_column ensures contiguous indices
+                    if movie not in self.id_to_idx:
+                        self.id_to_idx[movie] = len(self.id_to_idx)
 
-                    columns.append(self.id_to_column[movie])
+                    columns.append(self.id_to_idx[movie])
                     ratings.append(normalize(rating))
 
                     # progress bar
@@ -176,18 +177,19 @@ class Data:
             for dataset in self.datasets:
                 dataset.file_handle.close()
 
-            # the dimension of each instance
-            self.dim = len(self.id_to_column)
+            # the number of different movies/books/whatever
+            # used to size the embeddings tensor
+            self.embedding_size = len(self.id_to_idx)
             for dataset in self.datasets:
-                dataset.set_dim(self.dim)
+                dataset.set_emb_size(self.embedding_size)
 
             self.name_to_column = {}
             self.column_to_name = {}
             with open(movie_names) as datafile:
                 for line in datafile:
                     id, name, _ = parse('{:d}::{} ({}', line)
-                    if id in self.id_to_column:
-                        columns = self.id_to_column[id]
+                    if id in self.id_to_idx:
+                        columns = self.id_to_idx[id]
                         self.name_to_column[name] = columns
                         self.column_to_name[columns] = name
 
@@ -236,7 +238,7 @@ class Data:
         rows = np.zeros_like(cols)
         return sp.csc_matrix((values, (rows, cols)),
                              dtype='float32',
-                             shape=[1, self.dim]).toarray()
+                             shape=[1, self.embedding_size]).toarray()
 
 
 class DataSet:
@@ -260,8 +262,8 @@ class DataSet:
         np.savetxt(self.file_handle, data, fmt='%1.1f')
         return pos
 
-    def set_dim(self, dim):
-        self.dim = dim
+    def set_emb_size(self, embeddings_size):
+        self.embeddings_size = embeddings_size
 
     def next_batch(self, batch_size):
         """
@@ -305,7 +307,7 @@ class DataSet:
         # scores are based only on the ratings that were actually present in the dataset
         # (otherwise all the unrated movies would give our model an unfairly good score)
         inputs, targets, is_data_mask = (
-            sp.csc_matrix((vals, (rows, cols)), shape=(batch_size, self.dim)).toarray()
+            sp.csc_matrix((vals, (rows, cols)), shape=(batch_size, self.embeddings_size)).toarray()
             for vals in (values, corrupted_values, np.ones_like(values)))
         return inputs, targets, is_data_mask
 
