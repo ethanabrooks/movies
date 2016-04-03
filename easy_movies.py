@@ -15,8 +15,8 @@ DIM = 10677
 
 
 class EasyMovies(Data):
-    def __init__(self, ratings=RATINGS, entity_names=MOVIE_NAMES, debug=False):
-        Data.__init__(self, ratings=ratings, entity_names=entity_names, debug=debug)
+    def __init__(self, ratings=RATINGS, entity_names=MOVIE_NAMES, debug=False, load_previous=False):
+        Data.__init__(self, ratings=ratings, entity_names=entity_names, debug=debug, load_previous=load_previous)
 
     def parse_data(self, data, bar):
         last_user = None
@@ -47,6 +47,7 @@ class EasyMovies(Data):
                 name_to_column[name] = movies
                 column_to_name[movies] = name
         return name_to_column, column_to_name
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

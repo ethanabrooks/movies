@@ -22,10 +22,10 @@ MOVIE_NAMES = 'movies.dat'
 DEBUG_FILE = 'debug.dat'
 MAX_RATING = 5
 MIN_RATING = 0
-DEBUG_STOP = 30
+DEBUG_STOP = 3000
 DIM = 10677
 DATASET_NAMES = 'train test validation'.split()
-FILES_THAT_MUST_EXIST = DATASET_NAMES + [DATA_OBJ]
+FILES_THAT_MUST_EXIST = [name + '.dat' for name in DATASET_NAMES] + [DATA_OBJ]
 random.seed(7)  # lucky number 7
 
 
@@ -73,9 +73,9 @@ class FilePointer:
         self.offset = offset
 
     def readline(self):
-        fp = open(os.path.join(self.root, self.filename), 'r')
-        fp.seek(self.offset)
-        return fp.readline()
+        with open(os.path.join(self.root, self.filename), 'r') as fp:
+            fp.seek(self.offset)
+            return fp.readline()
 
 
 class Data:
@@ -83,11 +83,11 @@ class Data:
     Collector of the train, test, and validation datasets.
     This class creates the other three and contains information common to all.
     """
-
     def __init__(self, corrupt=1,
                  debug=False,
                  ratings=RATINGS,
-                 entity_names=MOVIE_NAMES):
+                 entity_names=MOVIE_NAMES,
+                 load_previous=False):
 
         """
         Check if this has already been done. If so, load attributes from file.
@@ -95,6 +95,10 @@ class Data:
         into train, test, and validation sets.
         """
         self.debug = debug
+
+        if load_previous:
+            self.load_previous()
+            return
 
         # create the three datasets
         self.datasets = []
@@ -111,7 +115,8 @@ class Data:
         # convert data into a more usable form
         # and split into train, validation, and test
         ratings_file = os.path.join(DATA_DIR, ratings)
-        bar = progress_bar('Loading ratings data', num_lines(ratings_file))
+        nlines = DEBUG_STOP if debug else num_lines(ratings_file)
+        bar = progress_bar('Loading ratings data', nlines)
         with open(ratings_file) as data:
             while True:
                 parsed = self.parse_data(data, bar)
@@ -132,8 +137,7 @@ class Data:
 
         bar.finish()
         print('Close file handles')
-        for dataset in self.datasets:
-            dataset.file_handle.close()
+        self.close_file_handles()
 
         print("Loaded data.")
 
@@ -148,15 +152,20 @@ class Data:
             self.name_to_column, self.column_to_name = self.populate_dicts(datafile)  # save self to file
 
         # save self to file
-        with open(DATA_OBJ, 'w') as fp:
+        root = DEBUG_DIR if debug else DATA_DIR
+        with open(os.path.join(root, DATA_OBJ), 'w') as fp:
             cPickle.dump(self.__dict__, fp, 2)
 
         # check that essential files didn't somehow get deleted
-        root = DEBUG_DIR if debug else DATA_DIR
         paths = [os.path.join(root, filename) for filename in
                  [name + '.dat' for name in DATASET_NAMES] + [DATA_OBJ]]
         for filepath in paths:
             assert not empty(filepath)
+        print('Data made it safely to file :)')
+
+    def close_file_handles(self):
+        for dataset in self.datasets:
+            dataset.file_handle.close()
 
     def backup(self, files_that_must_exist):
         for filename in files_that_must_exist:
@@ -192,21 +201,25 @@ class Data:
             # progress bar
             bar.next()
 
-    @staticmethod
-    def load_previous(self, files_that_must_exist):
+    def load_previous(self):
         """
         :param files_that_must_exist these files are the
         prerequisites for not reprocessing data
         """
-
         paths = (os.path.join(DATA_DIR, name)
-                 for name in files_that_must_exist)
-        if all(os.path.isfile(filepath) and  # it exists
-               not empty(filepath)  # it isn't empty
-               for filepath in paths):
-            # load self from file
-            with open(DATA_OBJ, 'rb') as fp:
-                self.__dict__.update(cPickle.load(fp))
+                 for name in FILES_THAT_MUST_EXIST)
+        for filepath in paths:
+            full_path = os.path.join(os.getcwd(), filepath)
+            if not os.path.isfile(filepath):
+                print(full_path + ' does not exist.')
+                exit(0)
+            if empty(filepath):
+                print(full_path + ' is empty.')
+                exit(0)
+
+        # load self from file
+        with open(DATA_OBJ, 'rb') as fp:
+            self.__dict__.update(cPickle.load(fp))
 
     def write_instance(self, user, entities, ratings):
         random_num = random.random()

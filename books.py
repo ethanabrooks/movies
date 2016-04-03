@@ -13,8 +13,8 @@ BOOK_NAMES = 'BX-Books.csv'
 
 
 class Books(Data):
-    def __init__(self, ratings=RATINGS, entity_names=BOOK_NAMES, debug=False):
-        Data.__init__(self, ratings=ratings, entity_names=entity_names, debug=debug)
+    def __init__(self, ratings=RATINGS, entity_names=BOOK_NAMES, debug=False, load_previous=False):
+        Data.__init__(self, ratings=ratings, entity_names=entity_names, debug=debug, load_previous=load_previous)
 
     def parse_data(self, handle, bar):
         data.iterate_if_line1(handle)

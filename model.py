@@ -24,7 +24,7 @@ import time
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import data
-from data import Data
+from easy_movies import EasyMovies
 from movies import Movies
 from books import Books
 import ops
@@ -52,12 +52,13 @@ flags.DEFINE_float('learning_rate', 0.0001, 'Initial learning rate.')
 flags.DEFINE_float('dropout_rate', .9, 'Probability of keeping nodes during dropout.')
 flags.DEFINE_integer('num_epochs', 2000, 'Number of epochs to run trainer.')
 flags.DEFINE_integer('hidden1', 1500, 'Number of units in hidden layer 1.')
+flags.DEFINE_integer('emb_dim', 300, 'Number of units in hidden layer 1.')
 flags.DEFINE_integer('hidden2', 800, 'Number of units in hidden layer 2.')
 flags.DEFINE_integer('batch_size', 10, 'Batch size.  '
                                        'Must divide evenly into the dataset sizes.')
 flags.DEFINE_string('save_dir', 'checkpoints', 'Directory to save data from session.')
 flags.DEFINE_string('summary_dir', 'logs', 'Directory to save data from session.')
-flags.DEFINE_string('dataset', 'Data', 'Directory to put the training data.')
+flags.DEFINE_string('dataset', 'EasyMovies', 'Directory to put the training data.')
 flags.DEFINE_boolean('debug', False, 'If true, use small dataset ')
 flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data for unit testing.')
 
@@ -135,17 +136,17 @@ def run_training(datasets):
     with tf.Graph().as_default():
 
         # Generate placeholders for the images and labels.
-        placeholders = placeholder_inputs(FLAGS.batch_size, datasets.dim)
+        placeholders = placeholder_inputs(FLAGS.batch_size, datasets.emb_size)
         inputs_placeholder, labels_placeholder, mask_placeholder = placeholders
 
         # Build a Graph that computes predictions from the inference model.
         logits = ops.inference(inputs_placeholder,
                                FLAGS.dropout_rate,
-                               datasets.dim,
+                               datasets.emb_size,
                                FLAGS.hidden1,
                                FLAGS.hidden2,
-                               datasets.embedding_size,
-                               datasets.embedding_dim)
+                               datasets.emb_size,
+                               FLAGS.emb_dim)
 
         # Add to the Graph the Ops for loss calculation.
         loss = ops.loss(logits, labels_placeholder)
@@ -246,7 +247,7 @@ def predict(instance, dat):
     with tf.Graph().as_default():
         # Build a Graph that computes predictions from the inference model.
         logits = ops.inference(tf.constant(instance), 1, dat.dim, FLAGS.hidden1, FLAGS.hidden2, dataset.embedding_size,
-                               dat.embedding_dim, cols, values)
+                               FLAGS.embedding_dim, cols, values)
 
         sess = tf.Session()
         # Restore variables from disk.
@@ -257,8 +258,13 @@ def predict(instance, dat):
 
 def main(_):
     os.chdir(FLAGS.dataset)
-    data = eval(FLAGS.dataset + '()')
-    run_training(data)
+    data = eval(FLAGS.dataset + '(load_previous=True)')
+    try:
+        run_training(data)
+    except KeyboardInterrupt:
+        data.close_file_handles()
+        print('Goodbye')
+        exit(0)
 
 
 if __name__ == '__main__':
