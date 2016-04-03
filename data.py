@@ -148,29 +148,23 @@ class Data:
             # convert data into a more usable form
             # and split into train, validation, and test
             with open(ratings) as data:
-                last_user = None
                 bar = progress_bar('Loading ratings data', num_lines(ratings))
-                for i, line in enumerate(data):
-                    user, movie, rating, _ = parse('{:d}::{:d}::{:g}:{}', line)
-                    if user != last_user:  # if we're on to a new user
-                        if last_user is not None:
-                            self.write_instance(last_user, columns, ratings)
+                while True:
+                    user, movies, ratings = self.parse_data(data, ratings, bar)
 
-                        # clean slate for next user
-                        columns, ratings = ([] for _ in range(2))
-                        last_user = user
+                    if not (movies or ratings or user):
+                        break
 
-                    # this is how id_to_column ensures contiguous columns
-                    if movie not in self.id_to_column:
-                        self.id_to_column[movie] = len(self.id_to_column)
+                    for i, movie in enumerate(movies):
+                        # this is how id_to_column ensures contiguous columns
+                        if movie not in self.id_to_column:
+                            self.id_to_column[movie] = len(self.id_to_column)
+                        movies[i] = self.id_to_column[movie]
 
-                    columns.append(self.id_to_column[movie])
-                    ratings.append(normalize(rating))
+                    self.write_instance(user, movies, ratings)
 
-                    # progress bar
                 bar.finish()
 
-                self.write_instance(user, columns, ratings)
             print("Loaded data.")
 
             for dataset in self.datasets:
@@ -187,9 +181,9 @@ class Data:
                 for line in datafile:
                     id, name, _ = parse('{:d}::{} ({}', line)
                     if id in self.id_to_column:
-                        columns = self.id_to_column[id]
-                        self.name_to_column[name] = columns
-                        self.column_to_name[columns] = name
+                        movies = self.id_to_column[id]
+                        self.name_to_column[name] = movies
+                        self.column_to_name[movies] = name
 
             # save self to file
             with open(datasets_file, 'w') as fp:
@@ -200,6 +194,27 @@ class Data:
                 shutil.copyfile(filename, backup_path(filename))
 
         os.chdir('..')  # return to main dir
+
+    def parse_data(self, data, ratings, bar):
+        last_user = None
+        movies, ratings = ([] for _ in range(2))
+        for i, line in enumerate(data):
+            user, movie, rating, _ = parse('{:d}::{:d}::{:g}:{}', line)
+            if user != last_user:  # if we're on to a new user
+                if last_user is not None:
+                    return last_user, movies, ratings
+
+                # clean slate for next user
+                movies, ratings = ([] for _ in range(2))
+                last_user = user
+
+            movies.append(movie)
+            ratings.append(normalize(rating))
+
+            # progress bar
+            bar.next()
+
+        return last_user, movies, ratings
 
     def write_instance(self, user, movies, ratings):
         random_num = random.random()
