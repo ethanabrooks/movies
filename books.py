@@ -21,6 +21,8 @@ class Books(Data):
         reader = csv.reader(handle, delimiter=';')
         last_user = None
         for line in reader:
+            # progress bar
+            bar.next()
             user, book, rating = line
             user = int(user)
             rating = int(rating)
@@ -34,7 +36,7 @@ class Books(Data):
 
             books.append(book)
             ratings.append(rating)
-            bar.next()
+        bar.next()
 
     def populate_dicts(self, handle):
         data.iterate_if_line1(handle)

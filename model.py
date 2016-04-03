@@ -246,8 +246,13 @@ def run_training(datasets):
 def predict(instance, dat):
     with tf.Graph().as_default():
         # Build a Graph that computes predictions from the inference model.
-        logits = ops.inference(tf.constant(instance), 1, dat.dim, FLAGS.hidden1, FLAGS.hidden2, dataset.embedding_size,
-                               FLAGS.embedding_dim, cols, values)
+        logits = ops.inference(tf.constant(instance),
+                               1,  # keep_prob
+                               dat.emb_size,
+                               FLAGS.hidden1,
+                               FLAGS.hidden2,
+                               dat.emb_size,
+                               FLAGS.emb_dim)
 
         sess = tf.Session()
         # Restore variables from disk.
@@ -258,13 +263,17 @@ def predict(instance, dat):
 
 def main(_):
     os.chdir(FLAGS.dataset)
-    data = eval(FLAGS.dataset + '(load_previous=True)')
+    data = load_data(FLAGS.dataset)
     try:
         run_training(data)
     except KeyboardInterrupt:
         data.close_file_handles()
         print('Goodbye')
         exit(0)
+
+
+def load_data(dataset):
+    return eval(dataset + '(load_previous=True)')
 
 
 if __name__ == '__main__':

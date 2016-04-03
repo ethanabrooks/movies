@@ -5,6 +5,7 @@ import cPickle
 
 import sys
 
+import abc
 import os
 import scipy.sparse as sp
 import numpy as np
@@ -62,6 +63,7 @@ def unnormalize(rating):
 def read_cols_vals(line):
     return np.fromstring(line, sep=' ').reshape(2, -1)
 
+
 def empty(filepath):
     return os.stat(filepath).st_size == 0
 
@@ -83,6 +85,9 @@ class Data:
     Collector of the train, test, and validation datasets.
     This class creates the other three and contains information common to all.
     """
+    one_and_only = None
+    __metaclass__ = abc.ABCMeta
+
     def __init__(self, corrupt=1,
                  debug=False,
                  ratings=RATINGS,
@@ -95,6 +100,13 @@ class Data:
         into train, test, and validation sets.
         """
         self.debug = debug
+
+        # There. Singleton.
+        if Data.one_and_only is None:
+            Data.one_and_only = self
+        else:
+            self.__dict__.update(Data.one_and_only)
+            return
 
         if load_previous:
             self.load_previous()
@@ -142,7 +154,7 @@ class Data:
         print("Loaded data.")
 
         # the number of different movies/books/entities
-        self.emb_size = len(self.id_to_emb_idx)
+        self.emb_size = len(self.id_to_emb_idx) + 1
         for dataset in self.datasets:
             dataset.set_emb_size(self.emb_size)
 
@@ -171,35 +183,50 @@ class Data:
         for filename in files_that_must_exist:
             shutil.copyfile(filename, os.path.join(BACKUP_DIR, filename))
 
+    @abc.abstractmethod
     def populate_dicts(self, handle):
-        name_to_column = {}
-        column_to_name = {}
-        for line in handle:
-            id, name, _ = parse('{:d}::{} ({}', line)
-            if id in self.id_to_emb_idx:
-                movies = self.id_to_emb_idx[id]
-                name_to_column[name] = movies
-                column_to_name[movies] = name
-        return name_to_column, column_to_name
+        """
+        :param handle a data handle in some file that correlates entity names
+        with numerical entity ids
+        :returns two dictionaries (name_to_column, column_to_name), where name
+        is the string name of the entity and 'column' is the location where that
+        entity is going to end up on the big sparse ratings vector
+        """
+        # name_to_column = {}
+        # column_to_name = {}
+        # for line in handle:
+        #     id, name, _ = parse('{:d}::{} ({}', line)
+        #     if id in self.id_to_emb_idx:
+        #         movies = self.id_to_emb_idx[id]
+        #         name_to_column[name] = movies
+        #         column_to_name[movies] = name
+        # return name_to_column, column_to_name
 
+    @abc.abstractmethod
     def parse_data(self, data, bar):
-        last_user = None
-        movies, ratings = ([] for _ in range(2))
-        for i, line in enumerate(data):
-            user, movie, rating, _ = parse('{:d}::{:d}::{:g}:{}', line)
-            if user != last_user:  # if we're on to a new user
-                if last_user is not None:
-                    return last_user, movies, ratings
-
-                # clean slate for next user
-                movies, ratings = ([] for _ in range(2))
-                last_user = user
-
-            movies.append(movie)
-            ratings.append(normalize(rating))
-
-            # progress bar
-            bar.next()
+        """
+        :param data: a handle in a data file
+        :param bar: a purty loading bar
+        parse_data is responsible for iterating both of these
+        :returns a (entities, ratings) tuple (not-interleaved)
+        """
+        # last_user = None
+        # movies, ratings = ([] for _ in range(2))
+        # for i, line in enumerate(data):
+        #     user, movie, rating, _ = parse('{:d}::{:d}::{:g}:{}', line)
+        #     if user != last_user:  # if we're on to a new user
+        #         if last_user is not None:
+        #             return last_user, movies, ratings
+        #
+        #         # clean slate for next user
+        #         movies, ratings = ([] for _ in range(2))
+        #         last_user = user
+        #
+        #     movies.append(movie)
+        #     ratings.append(normalize(rating))
+        #
+        #     # progress bar
+        #     bar.next()
 
     def load_previous(self):
         """
@@ -209,15 +236,14 @@ class Data:
         paths = (os.path.join(DATA_DIR, name)
                  for name in FILES_THAT_MUST_EXIST)
         for filepath in paths:
-            full_path = os.path.join(os.getcwd(), filepath)
             if not os.path.isfile(filepath):
-                print(full_path + ' does not exist.')
+                print(filepath + ' does not exist.')
                 exit(0)
             if empty(filepath):
-                print(full_path + ' is empty.')
+                print(filepath + ' is empty.')
                 exit(0)
 
-        # load self from file
+        # load hibernating clone from file
         with open(DATA_OBJ, 'rb') as fp:
             self.__dict__.update(cPickle.load(fp))
 
@@ -359,4 +385,3 @@ if __name__ == '__main__':
     except IOError as error:
         print('cwd: ' + os.getcwd())
         print(error)
-

@@ -22,6 +22,8 @@ class Movies(Data):
         reader = csv.reader(handle)
         last_user = None
         for line in reader:
+            #progress bar
+            bar.next()
             user, movie, rating, _ = line
             user, movie = map(int, (user, movie))
             rating = float(rating)
@@ -35,7 +37,7 @@ class Movies(Data):
 
             movies.append(movie)
             values.append(rating)
-            bar.next()
+        bar.next()
 
     def populate_dicts(self, handle):
         data.iterate_if_line1(handle)

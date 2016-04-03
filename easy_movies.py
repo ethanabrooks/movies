@@ -22,6 +22,8 @@ class EasyMovies(Data):
         last_user = None
         movies, ratings = ([] for _ in range(2))
         for i, line in enumerate(data):
+            # progress bar
+            bar.next()
             user, movie, rating, _ = parse('{:d}::{:d}::{:g}:{}', line)
             if user != last_user:  # if we're on to a new user
                 if last_user is not None:
@@ -33,9 +35,8 @@ class EasyMovies(Data):
 
             movies.append(movie)
             ratings.append(normalize(rating))
+        bar.next()
 
-            # progress bar
-            bar.next()
 
     def populate_dicts(self, handle):
         name_to_column = {}

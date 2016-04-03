@@ -31,17 +31,20 @@ Notable features:
 
 
 Checkpoint 2:
-Full disclosure. This is currently a work in progress. Tensorflow is hard.
-As you can see in the code Movies and Books are classes that inherit from the
-main class, data, and override the methods involved in parsing data.
+The model implements 3 datasets:
+- The original short movies dataset (`easy_movies.py`)
+- The larger movies dataset (`movies.py`)
+- THe books dataset (`books.py`)
 
-The main optimization is the use of a randomized embeddings matrix instead of a
-a sparse vector representing every single movie/book. The goal was to avoid
-dealing with this large sparse matrix. Because the vectors in a randomized
-embeddings matrix are, on average, orthogonal, when we add these vectors, we
-achieve an effect similar to a large sparse matrix with ones where there is data
-and zeros where there is none. Furthermore, if we multiply each of these
-randomized embeddings vectors by the rating, we achieve a similar effect to a
-large sparse matrix with zeros where there is no data and the rating where there
-is data. The major benefit is that we avoid filling thousands of memory
-addresses with zeros, as we would have to with the sparse matrix.
+Each of these modules implements a class that inherits from the abstact
+`Data` object, which does most of the heavy lifting, while these smaller
+modules just take care of parsing. Any dataset that implements just two simple
+abstract methods can be plugged into the model.
+
+The model has two main performance features:
+- Instead of loading all the training data into memory, the model pulls data
+  from a file pointer that remains open during training. This actually slows
+down the model, but makes it capable of handling much larger datasets.
+- On the inputs side, the model hashes into a randomized embeddings vector
+  (rather than representing the user's ratings as a massive sparse vector).
+Again, the performance savings are more on the side of memory here.
