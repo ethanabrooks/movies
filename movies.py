@@ -14,10 +14,10 @@ DIM = 10677
 
 
 class Movies(Data):
-    def __init__(self, data_file=RATINGS, vocab=MOVIE_NAMES):
-        Data.__init__(self, data_file, vocab)
+    def __init__(self, ratings=RATINGS, entity_names=MOVIE_NAMES, debug=False, reload=True):
+        Data.__init__(self, ratings=ratings, entity_names=entity_names, debug=debug, reload=reload)
 
-    def parse_data(self, handle):
+    def parse_data(self, handle, bar):
         data.iterate_if_line1(handle)
         reader = csv.reader(handle)
         last_user = None
@@ -35,6 +35,7 @@ class Movies(Data):
 
             movies.append(movie)
             values.append(rating)
+            bar.next()
 
     def populate_dicts(self, handle):
         data.iterate_if_line1(handle)

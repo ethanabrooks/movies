@@ -31,6 +31,11 @@ def progress_bar(message, max):
                           suffix='%(percent)1.1f%%, ETA: %(eta)ds')
 
 
+def iterate_if_line1(handle):
+    if handle.tell() == 0:
+        next(handle)
+
+
 def num_lines(filepath):
     """ get the number of lines in a file """
     num = 0
@@ -84,7 +89,7 @@ class Data:
                  debug=False,
                  reload=False,
                  ratings=RATINGS,
-                 movie_names=MOVIE_NAMES):
+                 entity_names=MOVIE_NAMES):
 
         """
         Check if this has already been done. If so, load attributes from file.
@@ -148,13 +153,14 @@ class Data:
 
             # convert data into a more usable form
             # and split into train, validation, and test
+            bar = progress_bar('Loading ratings data', num_lines(ratings))
             with open(ratings) as data:
-                bar = progress_bar('Loading ratings data', num_lines(ratings))
                 while True:
-                    user, movies, ratings = self.parse_data(data, bar)
-
-                    if not (movies or ratings or user):
+                    parsed = self.parse_data(data, bar)
+                    if parsed is None:
                         break
+
+                    user, movies, ratings = parsed
 
                     for i, movie in enumerate(movies):
                         # this is how id_to_column ensures contiguous columns
@@ -176,7 +182,8 @@ class Data:
             for dataset in self.datasets:
                 dataset.set_dim(self.dim)
 
-            self.name_to_column, self.column_to_name = self.populate_dicts(movie_names)# save self to file
+            with open(entity_names) as datafile:
+                self.name_to_column, self.column_to_name = self.populate_dicts(datafile)  # save self to file
             with open(datasets_file, 'w') as fp:
                 cPickle.dump(self.__dict__, fp, 2)
 
@@ -186,16 +193,15 @@ class Data:
 
         os.chdir('..')  # return to main dir
 
-    def populate_dicts(self, movie_names):
+    def populate_dicts(self, handle):
         name_to_column = {}
         column_to_name = {}
-        with open(movie_names) as datafile:
-            for line in datafile:
-                id, name, _ = parse('{:d}::{} ({}', line)
-                if id in self.id_to_column:
-                    movies = self.id_to_column[id]
-                    name_to_column[name] = movies
-                    column_to_name[movies] = name
+        for line in handle:
+            id, name, _ = parse('{:d}::{} ({}', line)
+            if id in self.id_to_column:
+                movies = self.id_to_column[id]
+                name_to_column[name] = movies
+                column_to_name[movies] = name
         return name_to_column, column_to_name
 
     def parse_data(self, data, bar):
@@ -216,8 +222,6 @@ class Data:
 
             # progress bar
             bar.next()
-
-        return last_user, movies, ratings
 
     def write_instance(self, user, movies, ratings):
         random_num = random.random()
