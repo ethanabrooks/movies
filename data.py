@@ -22,6 +22,7 @@ MOVIE_NAMES = 'movies.dat'
 DEBUG_FILE = 'debug.dat'
 MAX_RATING = 5
 MIN_RATING = 0
+DEBUG_STOP = 30
 DIM = 10677
 DATASET_NAMES = 'train test validation'.split()
 FILES_THAT_MUST_EXIST = DATASET_NAMES + [DATA_OBJ]
@@ -93,10 +94,7 @@ class Data:
         If not, go through the main ratings file, reformat the data, and split
         into train, test, and validation sets.
         """
-        # double check that we want to continue (this wipes existing data)
         self.debug = debug
-        if debug:
-            ratings = 'debug.dat'
 
         # create the three datasets
         self.datasets = []
@@ -118,8 +116,6 @@ class Data:
             while True:
                 parsed = self.parse_data(data, bar)
                 if parsed is None:
-                    for dataset in self.datasets:
-                        dataset.file_handle.close()
                     break
 
                 user, entities, ratings = parsed
@@ -130,19 +126,37 @@ class Data:
                         self.id_to_emb_idx[entity] = len(self.id_to_emb_idx)
                     entities[i] = self.id_to_emb_idx[entity]
                 self.write_instance(user, entities, ratings)
+                if debug and len(self.id_to_emb_idx) > DEBUG_STOP:
+                    print('\nStop early for debug.')
+                    break
+
         bar.finish()
+        print('Close file handles')
+        for dataset in self.datasets:
+            dataset.file_handle.close()
+
         print("Loaded data.")
 
-        # the dimension of each instance
+        # the number of different movies/books/entities
         self.emb_size = len(self.id_to_emb_idx)
         for dataset in self.datasets:
             dataset.set_emb_size(self.emb_size)
 
+        # get dicts that translate between string names and columns in the large
+        # sparse data vector (one element per entity)
         with open(os.path.join(DATA_DIR, entity_names)) as datafile:
             self.name_to_column, self.column_to_name = self.populate_dicts(datafile)  # save self to file
 
+        # save self to file
         with open(DATA_OBJ, 'w') as fp:
             cPickle.dump(self.__dict__, fp, 2)
+
+        # check that essential files didn't somehow get deleted
+        root = DEBUG_DIR if debug else DATA_DIR
+        paths = [os.path.join(root, filename) for filename in
+                 [name + '.dat' for name in DATASET_NAMES] + [DATA_OBJ]]
+        for filepath in paths:
+            assert not empty(filepath)
 
     def backup(self, files_that_must_exist):
         for filename in files_that_must_exist:
@@ -308,9 +322,11 @@ class DataSet:
         return inputs, targets, is_data_mask
 
 
-if __name__ == '__main__':
-    import data
+def assert_exists(filepath):
+    assert os.path.isfile(filepath), '{0}/{1} not found'.format(os.getcwd(), filepath)
 
+
+if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--debug', action='store_true')
     args = parser.parse_args()
@@ -319,8 +335,14 @@ if __name__ == '__main__':
     MOVIE_NAMES = 'movies.dat'
     DIR = 'debug' if args.debug else 'data'
     os.chdir('EasyMovies')
-    files_that_must_exist = (os.path.join(DIR, name) for name in (RATINGS, MOVIE_NAMES))
+    files_that_must_exist = (os.path.join(DATA_DIR, name)
+                             for name in (RATINGS, MOVIE_NAMES))
     for filepath in files_that_must_exist:
-        assert os.path.isfile(filepath)
+        assert_exists(filepath)
 
-    data.Data(debug=args.debug)
+    try:
+        Data(debug=args.debug)
+    except IOError as error:
+        print('cwd: ' + os.getcwd())
+        print(error)
+

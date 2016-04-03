@@ -9,12 +9,12 @@ from data import Data
 from parse import parse
 
 RATINGS = 'BX-Book-Ratings.csv'
-MOVIE_NAMES = 'BX-Books.csv'
+BOOK_NAMES = 'BX-Books.csv'
 
 
 class Books(Data):
-    def __init__(self, ratings=RATINGS, entity_names=MOVIE_NAMES, debug=False, reload=True):
-        Data.__init__(self, ratings=ratings, entity_names=entity_names, debug=debug, reload=reload)
+    def __init__(self, ratings=RATINGS, entity_names=BOOK_NAMES, debug=False):
+        Data.__init__(self, ratings=ratings, entity_names=entity_names, debug=debug)
 
     def parse_data(self, handle, bar):
         data.iterate_if_line1(handle)
@@ -50,9 +50,17 @@ class Books(Data):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--debug', action='store_true')
-    parser.add_argument('--reload', action='store_true')
+    parser.add_argument('-d', '--debug', action='store_true')
     args = parser.parse_args()
 
     os.chdir('Books')
-    Books(debug=args.debug, reload=args.reload)
+    files_that_must_exist = (os.path.join(data.DATA_DIR, name)
+                             for name in (RATINGS, BOOK_NAMES))
+    for filepath in files_that_must_exist:
+        data.assert_exists(filepath)
+
+    try:
+        Books(debug=args.debug)
+    except IOError as error:
+        print('cwd: ' + os.getcwd())
+        print(error)
