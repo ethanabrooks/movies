@@ -13,14 +13,18 @@ from parse import parse
 
 DATA_DIR = 'data'
 BACKUP_DIR = 'backup'
+DEBUG_DIR = 'debug'
 
 # names of files where we will pickle and save objects for later use
-datasets_file = 'DataObj'
+DATA_OBJ = 'DataObj'
 RATINGS = 'ratings.dat'
 MOVIE_NAMES = 'movies.dat'
+DEBUG_FILE = 'debug.dat'
 MAX_RATING = 5
 MIN_RATING = 0
 DIM = 10677
+DATASET_NAMES = 'train test validation'.split()
+FILES_THAT_MUST_EXIST = DATASET_NAMES + [DATA_OBJ]
 random.seed(7)  # lucky number 7
 
 
@@ -54,27 +58,21 @@ def unnormalize(rating):
     return rating + np.mean((MAX_RATING, MIN_RATING))
 
 
-def backup_path(filename):
-    """ to be called from a child of the main directory """
-    return os.path.join('..', BACKUP_DIR, filename)
-
-
-def data_path(filename):
-    """to be called from the main directory"""
-    return os.path.join(DATA_DIR, filename)
-
-
 def read_cols_vals(line):
     return np.fromstring(line, sep=' ').reshape(2, -1)
 
+def empty(filepath):
+    return os.stat(filepath).st_size == 0
+
 
 class FilePointer:
-    def __init__(self, filename, offset):
+    def __init__(self, root, filename, offset):
+        self.root = root
         self.filename = filename
         self.offset = offset
 
     def readline(self):
-        fp = open(data_path(self.filename), 'r')
+        fp = open(os.path.join(self.root, self.filename), 'r')
         fp.seek(self.offset)
         return fp.readline()
 
@@ -87,7 +85,6 @@ class Data:
 
     def __init__(self, corrupt=1,
                  debug=False,
-                 reload=False,
                  ratings=RATINGS,
                  entity_names=MOVIE_NAMES):
 
@@ -96,111 +93,68 @@ class Data:
         If not, go through the main ratings file, reformat the data, and split
         into train, test, and validation sets.
         """
-        # create required dirs if they do not exist
-        if not os.path.isdir(DATA_DIR):
-            os.mkdir(DATA_DIR)
-        if not os.path.isdir(BACKUP_DIR):
-            os.mkdir(BACKUP_DIR)
-        os.chdir(DATA_DIR)  # this will make other operations easier
-        datasets = ['train', 'test', 'validation']
+        # double check that we want to continue (this wipes existing data)
+        self.debug = debug
+        if debug:
+            ratings = 'debug.dat'
 
-        # these files are the prerequisites for not reprocessing data
-        files_that_must_exist = [filename + '.dat' for filename in datasets] + \
-                                [datasets_file]
+        # create the three datasets
+        self.datasets = []
+        for name in DATASET_NAMES:
+            dataset = DataSet(name + '.dat', corrupt, debug)
+            self.__dict__[name] = dataset
+            self.datasets.append(dataset)
 
-        def data_already_processed():
-            return all(os.path.isfile(filepath) and  # it exists
-                       os.stat(filepath).st_size != 0  # it isn't empty
-                       for filepath in files_that_must_exist)
+        # id_to_column assigns each movie to a column
+        # such that all columns are contiguous
+        self.id_to_emb_idx = {}
+        self.user_dic = {}
 
-        # if files are missing, try retrieving from backup
-        # if not data_already_processed():
-        #     for filename in os.listdir(backup_path('')):
-        #         shutil.copyfile(backup_path(filename), filename)
+        # convert data into a more usable form
+        # and split into train, validation, and test
+        ratings_file = os.path.join(DATA_DIR, ratings)
+        bar = progress_bar('Loading ratings data', num_lines(ratings_file))
+        with open(ratings_file) as data:
+            while True:
+                parsed = self.parse_data(data, bar)
+                if parsed is None:
+                    for dataset in self.datasets:
+                        dataset.file_handle.close()
+                    break
 
-        # check again
-        if data_already_processed() and not reload:
-            # load self from file
-            with open(datasets_file, 'rb') as fp:
-                self.__dict__.update(cPickle.load(fp))
+                user, entities, ratings = parsed
+                for i, entity in enumerate(entities):
 
-        else:  # if data has not already been loaded
-            # double check that we want to continue (this wipes existing data)
-            # response = raw_input('Are you sure you want to process data? ')
-            # while True:
-            #     if response in 'Yes yes':
-            #         break
-            #     elif response in 'No no':
-            #         print('Ok. Goodbye.')
-            #         exit(0)
-            #     else:
-            #         response = raw_input('Please enter [y|n]. ')
+                    # this is how id_to_emb_idx ensures contiguous columns
+                    if entity not in self.id_to_emb_idx:
+                        self.id_to_emb_idx[entity] = len(self.id_to_emb_idx)
+                    entities[i] = self.id_to_emb_idx[entity]
+                self.write_instance(user, entities, ratings)
+        bar.finish()
+        print("Loaded data.")
 
-            if debug:
-                ratings = 'debug.dat'
+        # the dimension of each instance
+        self.emb_size = len(self.id_to_emb_idx)
+        for dataset in self.datasets:
+            dataset.set_emb_size(self.emb_size)
 
-            # create the three datasets
-            self.datasets = []
-            for name in datasets:
-                dataset = DataSet(name + '.dat', corrupt)
-                self.__dict__[name] = dataset
-                self.datasets.append(dataset)
+        with open(os.path.join(DATA_DIR, entity_names)) as datafile:
+            self.name_to_column, self.column_to_name = self.populate_dicts(datafile)  # save self to file
 
-            # id_to_column assigns each movie to a column
-            # such that all columns are contiguous
-            self.id_to_column = {}
-            self.user_dic = {}
+        with open(DATA_OBJ, 'w') as fp:
+            cPickle.dump(self.__dict__, fp, 2)
 
-            # convert data into a more usable form
-            # and split into train, validation, and test
-            bar = progress_bar('Loading ratings data', num_lines(ratings))
-            with open(ratings) as data:
-                while True:
-                    parsed = self.parse_data(data, bar)
-                    if parsed is None:
-                        break
-
-                    user, movies, ratings = parsed
-
-                    for i, movie in enumerate(movies):
-                        # this is how id_to_column ensures contiguous columns
-                        if movie not in self.id_to_column:
-                            self.id_to_column[movie] = len(self.id_to_column)
-                        movies[i] = self.id_to_column[movie]
-
-                    self.write_instance(user, movies, ratings)
-
-                bar.finish()
-
-            print("Loaded data.")
-
-            for dataset in self.datasets:
-                dataset.file_handle.close()
-
-            # the dimension of each instance
-            self.dim = len(self.id_to_column)
-            for dataset in self.datasets:
-                dataset.set_dim(self.dim)
-
-            with open(entity_names) as datafile:
-                self.name_to_column, self.column_to_name = self.populate_dicts(datafile)  # save self to file
-
-            with open(datasets_file, 'w') as fp:
-                cPickle.dump(self.__dict__, fp, 2)
-
-            # backup
-            for filename in files_that_must_exist:
-                shutil.copyfile(filename, backup_path(filename))
-
-        os.chdir('..')  # return to main dir
+    def backup(self, files_that_must_exist):
+        for filename in files_that_must_exist:
+            shutil.copyfile(filename, os.path.join(BACKUP_DIR, filename))
 
     def populate_dicts(self, handle):
         name_to_column = {}
         column_to_name = {}
         for line in handle:
             id, name, _ = parse('{:d}::{} ({}', line)
-            if id in self.id_to_column:
-                movies = self.id_to_column[id]
+            if id in self.id_to_emb_idx:
+                movies = self.id_to_emb_idx[id]
                 name_to_column[name] = movies
                 column_to_name[movies] = name
         return name_to_column, column_to_name
@@ -224,7 +178,22 @@ class Data:
             # progress bar
             bar.next()
 
-    def write_instance(self, user, movies, ratings):
+    def load_previous(self, files_that_must_exist):
+        """
+        :param files_that_must_exist these files are the
+        prerequisites for not reprocessing data
+        """
+
+        paths = (os.path.join(DATA_DIR, name)
+                 for name in files_that_must_exist)
+        if all(os.path.isfile(filepath) and  # it exists
+               not empty(filepath)  # it isn't empty
+               for filepath in paths):
+            # load self from file
+            with open(DATA_OBJ, 'rb') as fp:
+                self.__dict__.update(cPickle.load(fp))
+
+    def write_instance(self, user, entities, ratings):
         random_num = random.random()
         if random_num < .7:  # 70% of the rime
             dataset = self.train
@@ -234,10 +203,11 @@ class Data:
             dataset = self.validation
 
         # write instance to the file associated with the dataset
-        pos = dataset.new_instance(movies, ratings)
+        pos = dataset.new_instance(entities, ratings)
 
         # save a "pointer" to the users position in the file
-        self.user_dic[user] = FilePointer(dataset.datafile, pos)
+        path = DEBUG_DIR if self.debug else DATA_DIR
+        self.user_dic[user] = FilePointer(path, dataset.datafile, pos)
 
     def get_col(self, movie):
         """
@@ -259,15 +229,16 @@ class Data:
         rows = np.zeros_like(cols)
         return sp.csc_matrix((values, (rows, cols)),
                              dtype='float32',
-                             shape=[1, self.dim]).toarray()
+                             shape=[1, self.emb_size]).toarray()
 
 
 class DataSet:
-    def __init__(self, datafile, corrupt):
+    def __init__(self, datafile, corrupt, debug):
         self.datafile = datafile
 
         # we leave the file_handle open for speed
-        self.file_handle = open(self.datafile, 'w')
+        data_dir = DEBUG_DIR if debug else DATA_DIR
+        self.file_handle = open(os.path.join(data_dir, datafile), 'w')
         self.corrupt = corrupt
         self.num_examples = 0
 
@@ -283,8 +254,8 @@ class DataSet:
         np.savetxt(self.file_handle, data, fmt='%1.1f')
         return pos
 
-    def set_dim(self, dim):
-        self.dim = dim
+    def set_emb_size(self, emb_size):
+        self.emb_size = emb_size
 
     def next_batch(self, batch_size):
         """
@@ -294,8 +265,9 @@ class DataSet:
         # These values will later be used to construct a sparse matrix
         values, rows, cols = ([] for _ in range(3))
 
+        filepath = os.path.join(DATA_DIR, self.datafile)
         if self.file_handle.closed:
-            self.file_handle = open(os.path.join(DATA_DIR, self.datafile), 'r')
+            self.file_handle = open(filepath, 'r')
             self.file_handle.seek(0)
 
         for i, line in enumerate(self.file_handle):
@@ -312,6 +284,9 @@ class DataSet:
 
         if not values:  # if handle was at the end of the file
             self.file_handle.close()
+            if empty(filepath):
+                print('The data file is empty')
+                exit(0)
             return self.next_batch(batch_size)  # restart at the beginning of the file
 
         # At this point values, cols, and rows are lists of (n,) shape arrays
@@ -328,7 +303,7 @@ class DataSet:
         # scores are based only on the ratings that were actually present in the dataset
         # (otherwise all the unrated movies would give our model an unfairly good score)
         inputs, targets, is_data_mask = (
-            sp.csc_matrix((vals, (rows, cols)), shape=(batch_size, self.dim)).toarray()
+            sp.csc_matrix((vals, (rows, cols)), shape=(batch_size, self.emb_size)).toarray()
             for vals in (values, corrupted_values, np.ones_like(values)))
         return inputs, targets, is_data_mask
 
@@ -337,10 +312,15 @@ if __name__ == '__main__':
     import data
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--debug', action='store_true')
-    parser.add_argument('--reload', action='store_true')
+    parser.add_argument('-d', '--debug', action='store_true')
     args = parser.parse_args()
 
+    RATINGS = 'ratings.dat'
+    MOVIE_NAMES = 'movies.dat'
+    DIR = 'debug' if args.debug else 'data'
     os.chdir('EasyMovies')
+    files_that_must_exist = (os.path.join(DIR, name) for name in (RATINGS, MOVIE_NAMES))
+    for filepath in files_that_must_exist:
+        assert os.path.isfile(filepath)
 
-    data.Data(debug=args.debug, reload=args.reload)
+    data.Data(debug=args.debug)

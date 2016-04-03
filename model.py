@@ -140,11 +140,8 @@ def run_training():
         inputs_placeholder, labels_placeholder, mask_placeholder = placeholders
 
         # Build a Graph that computes predictions from the inference model.
-        logits = ops.inference(inputs_placeholder,
-                               FLAGS.dropout_rate,
-                               data_sets.dim,
-                               FLAGS.hidden1,
-                               FLAGS.hidden2)
+        logits = ops.inference(inputs_placeholder, FLAGS.dropout_rate, data_sets.dim, FLAGS.hidden1, FLAGS.hidden2,
+                               data_sets.embedding_size, data_sets.embedding_dim)
 
         # Add to the Graph the Ops for loss calculation.
         loss = ops.loss(logits, labels_placeholder)
@@ -244,11 +241,8 @@ def run_training():
 def predict(instance, dat):
     with tf.Graph().as_default():
         # Build a Graph that computes predictions from the inference model.
-        logits = ops.inference(tf.constant(instance),
-                               1,  # no dropout
-                               dat.dim,
-                               FLAGS.hidden1,
-                               FLAGS.hidden2)
+        logits = ops.inference(tf.constant(instance), 1, dat.dim, FLAGS.hidden1, FLAGS.hidden2, dataset.embedding_size,
+                               dataset.embedding_dim, cols, values)
 
         sess = tf.Session()
         # Restore variables from disk.

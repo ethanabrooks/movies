@@ -36,7 +36,8 @@ import tensorflow as tf
 import numpy as np
 
 
-def inference(inputs, keep_prob, data_dim, hidden1_units, hidden2_units):
+def inference(inputs, keep_prob, data_dim, hidden1_units, hidden2_units, embedding_size, embedding_dim, entities,
+              ratings):
     """Build the MNIST model up to where it may be used for inference.
 
   Args:
@@ -46,7 +47,24 @@ def inference(inputs, keep_prob, data_dim, hidden1_units, hidden2_units):
 
   Returns:
     softmax_linear: Output tensor with the computed logits.
+    :param embedding_size:
+    :param embedding_dim:
+    :param entities:
+    :param ratings:
   """
+    # Embeddings
+    embeddings = tf.Variable(
+        tf.random_uniform([embedding_size, embedding_dim], -1.0, 1.0))
+
+    # hash into embeddings
+    embedding_lookup = tf.nn.embedding_lookup(embeddings, entities)
+
+    # multiply each embedding vector elemwise with ratings
+    scale_by_value = tf.transpose(tf.mul(tf.transpose(embedding_lookup),
+                                         tf.transpose(ratings)))
+    # sum all vectors in each instance
+    vector_sums = tf.reduce_sum(scale_by_value, 1)
+
     # Hidden 1
     with tf.name_scope('hidden1'):
         shape = [data_dim, hidden1_units]

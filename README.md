@@ -28,3 +28,20 @@ Notable features:
   detects the necessary files and loads metadata into memory. (To reload data, run ``python data.py reload``)
 - The model continuously saves its parameters to memory so that it can pickup
   training where it left off.
+
+
+Checkpoint 2:
+Full disclosure. This is currently a work in progress. Tensorflow is hard.
+As you can see in the code Movies and Books are classes that inherit from the
+main class, data, and override the methods involved in parsing data.
+
+The main optimization is the use of a randomized embeddings matrix instead of a
+a sparse vector representing every single movie/book. The goal was to avoid
+dealing with this large sparse matrix. Because the vectors in a randomized
+embeddings matrix are, on average, orthogonal, when we add these vectors, we
+achieve an effect similar to a large sparse matrix with ones where there is data
+and zeros where there is none. Furthermore, if we multiply each of these
+randomized embeddings vectors by the rating, we achieve a similar effect to a
+large sparse matrix with zeros where there is no data and the rating where there
+is data. The major benefit is that we avoid filling thousands of memory
+addresses with zeros, as we would have to with the sparse matrix.
