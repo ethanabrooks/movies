@@ -1,3 +1,4 @@
+import argparse
 import random
 import shutil
 import cPickle
@@ -108,9 +109,9 @@ class Data:
                        for filepath in files_that_must_exist)
 
         # if files are missing, try retrieving from backup
-        if not data_already_processed():
-            for filename in os.listdir(backup_path('')):
-                shutil.copyfile(backup_path(filename), filename)
+        # if not data_already_processed():
+        #     for filename in os.listdir(backup_path('')):
+        #         shutil.copyfile(backup_path(filename), filename)
 
         # check again
         if data_already_processed() and not reload:
@@ -120,15 +121,15 @@ class Data:
 
         else:  # if data has not already been loaded
             # double check that we want to continue (this wipes existing data)
-            response = raw_input('Are you sure you want to process data? ')
-            while True:
-                if response in 'Yes yes':
-                    break
-                elif response in 'No no':
-                    print('Ok. Goodbye.')
-                    exit(0)
-                else:
-                    response = raw_input('Please enter [y|n]. ')
+            # response = raw_input('Are you sure you want to process data? ')
+            # while True:
+            #     if response in 'Yes yes':
+            #         break
+            #     elif response in 'No no':
+            #         print('Ok. Goodbye.')
+            #         exit(0)
+            #     else:
+            #         response = raw_input('Please enter [y|n]. ')
 
             if debug:
                 ratings = 'debug.dat'
@@ -150,7 +151,7 @@ class Data:
             with open(ratings) as data:
                 bar = progress_bar('Loading ratings data', num_lines(ratings))
                 while True:
-                    user, movies, ratings = self.parse_data(data, ratings, bar)
+                    user, movies, ratings = self.parse_data(data, bar)
 
                     if not (movies or ratings or user):
                         break
@@ -175,17 +176,7 @@ class Data:
             for dataset in self.datasets:
                 dataset.set_dim(self.dim)
 
-            self.name_to_column = {}
-            self.column_to_name = {}
-            with open(movie_names) as datafile:
-                for line in datafile:
-                    id, name, _ = parse('{:d}::{} ({}', line)
-                    if id in self.id_to_column:
-                        movies = self.id_to_column[id]
-                        self.name_to_column[name] = movies
-                        self.column_to_name[movies] = name
-
-            # save self to file
+            self.name_to_column, self.column_to_name = self.populate_dicts(movie_names)# save self to file
             with open(datasets_file, 'w') as fp:
                 cPickle.dump(self.__dict__, fp, 2)
 
@@ -195,7 +186,19 @@ class Data:
 
         os.chdir('..')  # return to main dir
 
-    def parse_data(self, data, ratings, bar):
+    def populate_dicts(self, movie_names):
+        name_to_column = {}
+        column_to_name = {}
+        with open(movie_names) as datafile:
+            for line in datafile:
+                id, name, _ = parse('{:d}::{} ({}', line)
+                if id in self.id_to_column:
+                    movies = self.id_to_column[id]
+                    name_to_column[name] = movies
+                    column_to_name[movies] = name
+        return name_to_column, column_to_name
+
+    def parse_data(self, data, bar):
         last_user = None
         movies, ratings = ([] for _ in range(2))
         for i, line in enumerate(data):
@@ -328,9 +331,11 @@ class DataSet:
 if __name__ == '__main__':
     import data
 
-    if len(sys.argv) > 1 and sys.argv[1] == 'debug':
-        data.Data(debug=True)
-    elif len(sys.argv) > 1 and sys.argv[1] == 'reload':
-        data.Data(reload=True)
-    else:
-        data.Data()
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--reload', action='store_true')
+    args = parser.parse_args()
+
+    os.chdir('EasyMovies')
+
+    data.Data(debug=args.debug, reload=args.reload)
