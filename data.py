@@ -192,6 +192,7 @@ class Data:
             # progress bar
             bar.next()
 
+    @staticmethod
     def load_previous(self, files_that_must_exist):
         """
         :param files_that_must_exist these files are the

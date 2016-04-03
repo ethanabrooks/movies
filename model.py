@@ -24,6 +24,9 @@ import time
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import data
+from data import Data
+from movies import Movies
+from books import Books
 import ops
 import os
 import tensorflow as tf
@@ -52,10 +55,9 @@ flags.DEFINE_integer('hidden1', 1500, 'Number of units in hidden layer 1.')
 flags.DEFINE_integer('hidden2', 800, 'Number of units in hidden layer 2.')
 flags.DEFINE_integer('batch_size', 10, 'Batch size.  '
                                        'Must divide evenly into the dataset sizes.')
-flags.DEFINE_string('train_dir', 'data', 'Directory to put the training data.')
 flags.DEFINE_string('save_dir', 'checkpoints', 'Directory to save data from session.')
 flags.DEFINE_string('summary_dir', 'logs', 'Directory to save data from session.')
-flags.DEFINE_string('dataset', 'movies', 'Directory to put the training data.')
+flags.DEFINE_string('dataset', 'Data', 'Directory to put the training data.')
 flags.DEFINE_boolean('debug', False, 'If true, use small dataset ')
 flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data for unit testing.')
 
@@ -127,21 +129,23 @@ def restore_variables(sess):
     print("Model restored.")
 
 
-def run_training():
+def run_training(datasets):
     """Train the autoencoder for a number of steps."""
-    # Get the sets of images and labels for training, validation, and test on data.
-    data_sets = data.Data(datafile='debug.dat') if FLAGS.debug else data.Data()
-
     # Tell TensorFlow that the model will be built into the default Graph.
     with tf.Graph().as_default():
 
         # Generate placeholders for the images and labels.
-        placeholders = placeholder_inputs(FLAGS.batch_size, data_sets.dim)
+        placeholders = placeholder_inputs(FLAGS.batch_size, datasets.dim)
         inputs_placeholder, labels_placeholder, mask_placeholder = placeholders
 
         # Build a Graph that computes predictions from the inference model.
-        logits = ops.inference(inputs_placeholder, FLAGS.dropout_rate, data_sets.dim, FLAGS.hidden1, FLAGS.hidden2,
-                               data_sets.embedding_size, data_sets.embedding_dim)
+        logits = ops.inference(inputs_placeholder,
+                               FLAGS.dropout_rate,
+                               datasets.dim,
+                               FLAGS.hidden1,
+                               FLAGS.hidden2,
+                               datasets.embedding_size,
+                               datasets.embedding_dim)
 
         # Add to the Graph the Ops for loss calculation.
         loss = ops.loss(logits, labels_placeholder)
@@ -191,7 +195,7 @@ def run_training():
                   (int(total), int(correct), correct / total))
 
         # And then after everything is built, start the training loop.
-        steps_per_epoch = data_sets.train.num_examples // FLAGS.batch_size
+        steps_per_epoch = datasets.train.num_examples // FLAGS.batch_size
         start_time = time.time()
 
         # TODO: make epoch a saved variable so that training picks up where it left off
@@ -199,7 +203,7 @@ def run_training():
             for step in xrange(steps_per_epoch):
                 # Fill a feed dictionary with the actual set of images and labels
                 # for this particular training step.
-                feed_dict = fill_feed_dict(data_sets.train, placeholders)
+                feed_dict = fill_feed_dict(datasets.train, placeholders)
 
                 # Run one step of the model.  The return values are the activations
                 # from the `train_op` (which is discarded) and the `loss` Op.  To
@@ -229,20 +233,20 @@ def run_training():
                     if epoch % 10 == 0 or (epoch + 1) == FLAGS.num_epochs:
                         # Evaluate against the training set.
                         print('Training Data Eval:')
-                        do_eval(data_sets.train)
+                        do_eval(datasets.train)
                         # Evaluate against the validation set.
                         print('Validation Data Eval:')
-                        do_eval(data_sets.validation)
+                        do_eval(datasets.validation)
                         # Evaluate against the test set.
                         print('Test Data Eval:')
-                        do_eval(data_sets.test)
+                        do_eval(datasets.test)
 
 
 def predict(instance, dat):
     with tf.Graph().as_default():
         # Build a Graph that computes predictions from the inference model.
         logits = ops.inference(tf.constant(instance), 1, dat.dim, FLAGS.hidden1, FLAGS.hidden2, dataset.embedding_size,
-                               dataset.embedding_dim, cols, values)
+                               dat.embedding_dim, cols, values)
 
         sess = tf.Session()
         # Restore variables from disk.
@@ -252,7 +256,9 @@ def predict(instance, dat):
 
 
 def main(_):
-    run_training()
+    os.chdir(FLAGS.dataset)
+    data = eval(FLAGS.dataset + '()')
+    run_training(data)
 
 
 if __name__ == '__main__':
