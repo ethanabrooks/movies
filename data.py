@@ -184,6 +184,7 @@ class Data:
 
             with open(entity_names) as datafile:
                 self.name_to_column, self.column_to_name = self.populate_dicts(datafile)  # save self to file
+
             with open(datasets_file, 'w') as fp:
                 cPickle.dump(self.__dict__, fp, 2)
 
