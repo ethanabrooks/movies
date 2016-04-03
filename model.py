@@ -203,6 +203,7 @@ def run_training():
         for _ in xrange(FLAGS.num_epochs):
             epoch = sess.run(increment)
             for step in xrange(steps_per_epoch):
+                print('test')
                 # Fill a feed dictionary with the actual set of images and labels
                 # for this particular training step.
                 feed_dict = fill_feed_dict(data_sets.train, placeholders)
@@ -247,7 +248,7 @@ def run_training():
 def predict(instance, dat):
     with tf.Graph().as_default():
         # Build a Graph that computes predictions from the inference model.
-        logits = ops.inference(tf.constant(instance), 300, dat.dim, FLAGS.hidden1, FLAGS.hidden2, 1)
+        logits = ops.inference(tf.constant(instance), 300, dat.embedding_size, FLAGS.hidden1, FLAGS.hidden2, 1)
 
         sess = tf.Session()
         # Restore variables from disk.

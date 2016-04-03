@@ -50,8 +50,8 @@ load_path = os.path.join('checkpoints', 'checkpoint')
 # check if a model has been previously trained
 already_trained = os.path.exists(load_path)
 if not (args.train or already_trained):
-    check_if_ok_to_continue('Model has not been trained. '
-                            'Train it now (this may take several hours)? ')
+#     check_if_ok_to_continue('Model has not been trained. '
+#                             'Train it now (this may take several hours)? ')
     args.train = True
 
 if args.train:

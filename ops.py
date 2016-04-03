@@ -49,10 +49,10 @@ def inference(inputs, embedding_size, embedding_dim, hidden1_units, hidden2_unit
     :param embedding_size:
   """
     # Embeddings
-    embeddings = tf.Variable(
-        tf.random_uniform([embedding_dim, embedding_size], -1.0, 1.0))
-
-    input_emb = tf.nn.embedding_lookup(embeddings, inputs)
+    # embeddings = tf.Variable(
+    #     tf.random_uniform([embedding_dim, embedding_size], -1.0, 1.0))
+    #
+    # input_emb = tf.nn.embedding_lookup(embeddings, inputs)
 
     # Hidden 1
     with tf.name_scope('hidden1'):
@@ -63,7 +63,7 @@ def inference(inputs, embedding_size, embedding_dim, hidden1_units, hidden2_unit
             name='weights')
         biases = tf.Variable(tf.zeros([hidden1_units]),
                              name='biases')
-        hidden1 = tf.nn.relu(tf.matmul(input_emb, weights) + biases)
+        hidden1 = tf.nn.relu(tf.matmul(inputs, weights) + biases)
     # Hidden 2
     with tf.name_scope('hidden2'):
         weights = tf.Variable(

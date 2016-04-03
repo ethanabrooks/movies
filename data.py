@@ -120,15 +120,15 @@ class Data:
 
         else:  # if data has not already been loaded
             # double check that we want to continue (this wipes existing data)
-            response = raw_input('Are you sure you want to process data? ')
-            while True:
-                if response in 'Yes yes':
-                    break
-                elif response in 'No no':
-                    print('Ok. Goodbye.')
-                    exit(0)
-                else:
-                    response = raw_input('Please enter [y|n]. ')
+            # response = raw_input('Are you sure you want to process data? ')
+            # while True:
+            #     if response in 'Yes yes':
+            #         break
+            #     elif response in 'No no':
+            #         print('Ok. Goodbye.')
+            #         exit(0)
+            #     else:
+            #         response = raw_input('Please enter [y|n]. ')
 
             if debug:
                 ratings = 'debug.dat'
