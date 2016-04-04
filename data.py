@@ -1,9 +1,11 @@
+import argparse
 import random
 import shutil
 import cPickle
 
 import sys
 
+import abc
 import os
 import scipy.sparse as sp
 import numpy as np
@@ -12,14 +14,19 @@ from parse import parse
 
 DATA_DIR = 'data'
 BACKUP_DIR = 'backup'
+DEBUG_DIR = 'debug'
 
 # names of files where we will pickle and save objects for later use
-datasets_file = 'DataObj'
+DATA_OBJ = 'DataObj'
 RATINGS = 'ratings.dat'
 MOVIE_NAMES = 'movies.dat'
+DEBUG_FILE = 'debug.dat'
 MAX_RATING = 5
 MIN_RATING = 0
+DEBUG_STOP = 3000
 DIM = 10677
+DATASET_NAMES = 'train test validation'.split()
+FILES_THAT_MUST_EXIST = [name + '.dat' for name in DATASET_NAMES] + [DATA_OBJ]
 random.seed(7)  # lucky number 7
 
 
@@ -28,6 +35,11 @@ def progress_bar(message, max):
                           fill='IncrementalBar',
                           max=max,
                           suffix='%(percent)1.1f%%, ETA: %(eta)ds')
+
+
+def iterate_if_line1(handle):
+    if handle.tell() == 0:
+        next(handle)
 
 
 def num_lines(filepath):
@@ -48,29 +60,24 @@ def unnormalize(rating):
     return rating + np.mean((MAX_RATING, MIN_RATING))
 
 
-def backup_path(filename):
-    """ to be called from a child of the main directory """
-    return os.path.join('..', BACKUP_DIR, filename)
-
-
-def data_path(filename):
-    """to be called from the main directory"""
-    return os.path.join(DATA_DIR, filename)
-
-
 def read_cols_vals(line):
     return np.fromstring(line, sep=' ').reshape(2, -1)
 
 
+def empty(filepath):
+    return os.stat(filepath).st_size == 0
+
+
 class FilePointer:
-    def __init__(self, filename, offset):
+    def __init__(self, root, filename, offset):
+        self.root = root
         self.filename = filename
         self.offset = offset
 
     def readline(self):
-        fp = open(data_path(self.filename), 'r')
-        fp.seek(self.offset)
-        return fp.readline()
+        with open(os.path.join(self.root, self.filename), 'r') as fp:
+            fp.seek(self.offset)
+            return fp.readline()
 
 
 class Data:
@@ -78,132 +85,169 @@ class Data:
     Collector of the train, test, and validation datasets.
     This class creates the other three and contains information common to all.
     """
+    one_and_only = None
+    __metaclass__ = abc.ABCMeta
 
     def __init__(self, corrupt=1,
                  debug=False,
-                 reload=False,
                  ratings=RATINGS,
-                 movie_names=MOVIE_NAMES):
+                 entity_names=MOVIE_NAMES,
+                 load_previous=False):
 
         """
         Check if this has already been done. If so, load attributes from file.
         If not, go through the main ratings file, reformat the data, and split
         into train, test, and validation sets.
         """
-        # create required dirs if they do not exist
-        if not os.path.isdir(DATA_DIR):
-            os.mkdir(DATA_DIR)
-        if not os.path.isdir(BACKUP_DIR):
-            os.mkdir(BACKUP_DIR)
-        os.chdir(DATA_DIR)  # this will make other operations easier
-        datasets = ['train', 'test', 'validation']
+        self.debug = debug
 
-        # these files are the prerequisites for not reprocessing data
-        files_that_must_exist = [filename + '.dat' for filename in datasets] + \
-                                [datasets_file]
+        # There. Singleton.
+        if Data.one_and_only is None:
+            Data.one_and_only = self
+        else:
+            self.__dict__.update(Data.one_and_only)
+            return
 
-        def data_already_processed():
-            return all(os.path.isfile(filepath) and  # it exists
-                       os.stat(filepath).st_size != 0  # it isn't empty
-                       for filepath in files_that_must_exist)
+        if load_previous:
+            self.load_previous()
+            return
 
-        # if files are missing, try retrieving from backup
-        if not data_already_processed():
-            for filename in os.listdir(backup_path('')):
-                shutil.copyfile(backup_path(filename), filename)
+        # create the three datasets
+        self.datasets = []
+        for name in DATASET_NAMES:
+            dataset = DataSet(name + '.dat', corrupt, debug)
+            self.__dict__[name] = dataset
+            self.datasets.append(dataset)
 
-        # check again
-        if data_already_processed() and not reload:
-            # load self from file
-            with open(datasets_file, 'rb') as fp:
-                self.__dict__.update(cPickle.load(fp))
+        # id_to_column assigns each movie to a column
+        # such that all columns are contiguous
+        self.id_to_emb_idx = {}
+        self.user_dic = {}
 
-        else:  # if data has not already been loaded
-            # double check that we want to continue (this wipes existing data)
-            # response = raw_input('Are you sure you want to process data? ')
-            # while True:
-            #     if response in 'Yes yes':
-            #         break
-            #     elif response in 'No no':
-            #         print('Ok. Goodbye.')
-            #         exit(0)
-            #     else:
-            #         response = raw_input('Please enter [y|n]. ')
+        # convert data into a more usable form
+        # and split into train, validation, and test
+        ratings_file = os.path.join(DATA_DIR, ratings)
+        nlines = DEBUG_STOP if debug else num_lines(ratings_file)
+        bar = progress_bar('Loading ratings data', nlines)
+        with open(ratings_file) as data:
+            while True:
+                parsed = self.parse_data(data, bar)
+                if parsed is None:
+                    break
 
-            if debug:
-                ratings = 'debug.dat'
+                user, entities, ratings = parsed
+                for i, entity in enumerate(entities):
 
-            # create the three datasets
-            self.datasets = []
-            for name in datasets:
-                dataset = DataSet(name + '.dat', corrupt)
-                self.__dict__[name] = dataset
-                self.datasets.append(dataset)
+                    # this is how id_to_emb_idx ensures contiguous columns
+                    if entity not in self.id_to_emb_idx:
+                        self.id_to_emb_idx[entity] = len(self.id_to_emb_idx)
+                    entities[i] = self.id_to_emb_idx[entity]
+                self.write_instance(user, entities, ratings)
+                if debug and len(self.id_to_emb_idx) > DEBUG_STOP:
+                    print('\nStop early for debug.')
+                    break
 
-            # id_to_column assigns each movie to an embeddings index
-            # we don't want to use the id assigned to the movie because
-            # these ids are not necessarily contiguous
-            self.id_to_idx = {}
-            self.user_dic = {}
+        bar.finish()
+        print('Close file handles')
+        self.close_file_handles()
 
-            # convert data into a more usable form
-            # and split into train, validation, and test
-            with open(ratings) as data:
-                last_user = None
-                bar = progress_bar('Loading ratings data', num_lines(ratings))
-                for i, line in enumerate(data):
-                    user, movie, rating, _ = parse('{:d}::{:d}::{:g}:{}', line)
-                    if user != last_user:  # if we're on to a new user
-                        if last_user is not None:
-                            self.write_instance(last_user, columns, ratings)
+        print("Loaded data.")
 
-                        # clean slate for next user
-                        columns, ratings = ([] for _ in range(2))
-                        last_user = user
+        # the number of different movies/books/entities
+        self.emb_size = len(self.id_to_emb_idx) + 1
+        for dataset in self.datasets:
+            dataset.set_emb_size(self.emb_size)
 
-                    # this is how id_to_column ensures contiguous indices
-                    if movie not in self.id_to_idx:
-                        self.id_to_idx[movie] = len(self.id_to_idx)
+        # get dicts that translate between string names and columns in the large
+        # sparse data vector (one element per entity)
+        with open(os.path.join(DATA_DIR, entity_names)) as datafile:
+            self.name_to_column, self.column_to_name = self.populate_dicts(datafile)  # save self to file
 
-                    columns.append(self.id_to_idx[movie])
-                    ratings.append(normalize(rating))
+        # save self to file
+        root = DEBUG_DIR if debug else DATA_DIR
+        with open(os.path.join(root, DATA_OBJ), 'w') as fp:
+            cPickle.dump(self.__dict__, fp, 2)
 
-                    # progress bar
-                bar.finish()
+        # check that essential files didn't somehow get deleted
+        paths = [os.path.join(root, filename) for filename in
+                 [name + '.dat' for name in DATASET_NAMES] + [DATA_OBJ]]
+        for filepath in paths:
+            assert not empty(filepath)
+        print('Data made it safely to file :)')
 
-                self.write_instance(user, columns, ratings)
-            print("Loaded data.")
+    def close_file_handles(self):
+        for dataset in self.datasets:
+            dataset.file_handle.close()
 
-            for dataset in self.datasets:
-                dataset.file_handle.close()
+    def backup(self, files_that_must_exist):
+        for filename in files_that_must_exist:
+            shutil.copyfile(filename, os.path.join(BACKUP_DIR, filename))
 
-            # the number of different movies/books/whatever
-            # used to size the embeddings tensor
-            self.embedding_size = len(self.id_to_idx)
-            for dataset in self.datasets:
-                dataset.set_emb_size(self.embedding_size)
+    @abc.abstractmethod
+    def populate_dicts(self, handle):
+        """
+        :param handle a data handle in some file that correlates entity names
+        with numerical entity ids
+        :returns two dictionaries (name_to_column, column_to_name), where name
+        is the string name of the entity and 'column' is the location where that
+        entity is going to end up on the big sparse ratings vector
+        """
+        # name_to_column = {}
+        # column_to_name = {}
+        # for line in handle:
+        #     id, name, _ = parse('{:d}::{} ({}', line)
+        #     if id in self.id_to_emb_idx:
+        #         movies = self.id_to_emb_idx[id]
+        #         name_to_column[name] = movies
+        #         column_to_name[movies] = name
+        # return name_to_column, column_to_name
 
-            self.name_to_column = {}
-            self.column_to_name = {}
-            with open(movie_names) as datafile:
-                for line in datafile:
-                    id, name, _ = parse('{:d}::{} ({}', line)
-                    if id in self.id_to_idx:
-                        columns = self.id_to_idx[id]
-                        self.name_to_column[name] = columns
-                        self.column_to_name[columns] = name
+    @abc.abstractmethod
+    def parse_data(self, data, bar):
+        """
+        :param data: a handle in a data file
+        :param bar: a purty loading bar
+        parse_data is responsible for iterating both of these
+        :returns a (entities, ratings) tuple (not-interleaved)
+        """
+        # last_user = None
+        # movies, ratings = ([] for _ in range(2))
+        # for i, line in enumerate(data):
+        #     user, movie, rating, _ = parse('{:d}::{:d}::{:g}:{}', line)
+        #     if user != last_user:  # if we're on to a new user
+        #         if last_user is not None:
+        #             return last_user, movies, ratings
+        #
+        #         # clean slate for next user
+        #         movies, ratings = ([] for _ in range(2))
+        #         last_user = user
+        #
+        #     movies.append(movie)
+        #     ratings.append(normalize(rating))
+        #
+        #     # progress bar
+        #     bar.next()
 
-            # save self to file
-            with open(datasets_file, 'w') as fp:
-                cPickle.dump(self.__dict__, fp, 2)
+    def load_previous(self):
+        """
+        :param files_that_must_exist these files are the
+        prerequisites for not reprocessing data
+        """
+        paths = (os.path.join(DATA_DIR, name)
+                 for name in FILES_THAT_MUST_EXIST)
+        for filepath in paths:
+            if not os.path.isfile(filepath):
+                print(filepath + ' does not exist.')
+                exit(0)
+            if empty(filepath):
+                print(filepath + ' is empty.')
+                exit(0)
 
-            # backup
-            for filename in files_that_must_exist:
-                shutil.copyfile(filename, backup_path(filename))
+        # load hibernating clone from file
+        with open(DATA_OBJ, 'rb') as fp:
+            self.__dict__.update(cPickle.load(fp))
 
-        os.chdir('..')  # return to main dir
-
-    def write_instance(self, user, movies, ratings):
+    def write_instance(self, user, entities, ratings):
         random_num = random.random()
         if random_num < .7:  # 70% of the rime
             dataset = self.train
@@ -213,10 +257,11 @@ class Data:
             dataset = self.validation
 
         # write instance to the file associated with the dataset
-        pos = dataset.new_instance(movies, ratings)
+        pos = dataset.new_instance(entities, ratings)
 
         # save a "pointer" to the users position in the file
-        self.user_dic[user] = FilePointer(dataset.datafile, pos)
+        path = DEBUG_DIR if self.debug else DATA_DIR
+        self.user_dic[user] = FilePointer(path, dataset.datafile, pos)
 
     def get_col(self, movie):
         """
@@ -238,15 +283,16 @@ class Data:
         rows = np.zeros_like(cols)
         return sp.csc_matrix((values, (rows, cols)),
                              dtype='float32',
-                             shape=[1, self.embedding_size]).toarray()
+                             shape=[1, self.emb_size]).toarray()
 
 
 class DataSet:
-    def __init__(self, datafile, corrupt):
+    def __init__(self, datafile, corrupt, debug):
         self.datafile = datafile
 
         # we leave the file_handle open for speed
-        self.file_handle = open(self.datafile, 'w')
+        data_dir = DEBUG_DIR if debug else DATA_DIR
+        self.file_handle = open(os.path.join(data_dir, datafile), 'w')
         self.corrupt = corrupt
         self.num_examples = 0
 
@@ -262,8 +308,8 @@ class DataSet:
         np.savetxt(self.file_handle, data, fmt='%1.1f')
         return pos
 
-    def set_emb_size(self, embeddings_size):
-        self.embeddings_size = embeddings_size
+    def set_emb_size(self, emb_size):
+        self.emb_size = emb_size
 
     def next_batch(self, batch_size):
         """
@@ -273,8 +319,9 @@ class DataSet:
         # These values will later be used to construct a sparse matrix
         values, rows, cols = ([] for _ in range(3))
 
+        filepath = os.path.join(DATA_DIR, self.datafile)
         if self.file_handle.closed:
-            self.file_handle = open(os.path.join(DATA_DIR, self.datafile), 'r')
+            self.file_handle = open(filepath, 'r')
             self.file_handle.seek(0)
 
         for i, line in enumerate(self.file_handle):
@@ -291,6 +338,9 @@ class DataSet:
 
         if not values:  # if handle was at the end of the file
             self.file_handle.close()
+            if empty(filepath):
+                print('The data file is empty')
+                exit(0)
             return self.next_batch(batch_size)  # restart at the beginning of the file
 
         # At this point values, cols, and rows are lists of (n,) shape arrays
@@ -307,17 +357,31 @@ class DataSet:
         # scores are based only on the ratings that were actually present in the dataset
         # (otherwise all the unrated movies would give our model an unfairly good score)
         inputs, targets, is_data_mask = (
-            sp.csc_matrix((vals, (rows, cols)), shape=(batch_size, self.embeddings_size)).toarray()
+            sp.csc_matrix((vals, (rows, cols)), shape=(batch_size, self.emb_size)).toarray()
             for vals in (values, corrupted_values, np.ones_like(values)))
         return inputs, targets, is_data_mask
 
 
-if __name__ == '__main__':
-    import data
+def assert_exists(filepath):
+    assert os.path.isfile(filepath), '{0}/{1} not found'.format(os.getcwd(), filepath)
 
-    if len(sys.argv) > 1 and sys.argv[1] == 'debug':
-        data.Data(debug=True)
-    elif len(sys.argv) > 1 and sys.argv[1] == 'reload':
-        data.Data(reload=True)
-    else:
-        data.Data()
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-d', '--debug', action='store_true')
+    args = parser.parse_args()
+
+    RATINGS = 'ratings.dat'
+    MOVIE_NAMES = 'movies.dat'
+    DIR = 'debug' if args.debug else 'data'
+    os.chdir('EasyMovies')
+    files_that_must_exist = (os.path.join(DATA_DIR, name)
+                             for name in (RATINGS, MOVIE_NAMES))
+    for filepath in files_that_must_exist:
+        assert_exists(filepath)
+
+    try:
+        Data(debug=args.debug)
+    except IOError as error:
+        print('cwd: ' + os.getcwd())
+        print(error)

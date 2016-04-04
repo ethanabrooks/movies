@@ -1,3 +1,4 @@
+import argparse
 import csv
 import re
 import sys
@@ -11,15 +12,18 @@ RATINGS = 'ratings.csv'
 MOVIE_NAMES = 'movies.csv'
 DIM = 10677
 
-class Movies(Data):
-    def __init__(self, data_file=RATINGS, vocab=MOVIE_NAMES):
-        Data.__init__(self, data_file, vocab)
 
-    def parse_data(self, handle):
+class Movies(Data):
+    def __init__(self, ratings=RATINGS, entity_names=MOVIE_NAMES, debug=False, load_previous=False):
+        Data.__init__(self, ratings=ratings, entity_names=entity_names, debug=debug, load_previous=load_previous)
+
+    def parse_data(self, handle, bar):
         data.iterate_if_line1(handle)
         reader = csv.reader(handle)
         last_user = None
         for line in reader:
+            #progress bar
+            bar.next()
             user, movie, rating, _ = line
             user, movie = map(int, (user, movie))
             rating = float(rating)
@@ -33,6 +37,7 @@ class Movies(Data):
 
             movies.append(movie)
             values.append(rating)
+        bar.next()
 
     def populate_dicts(self, handle):
         data.iterate_if_line1(handle)
@@ -47,13 +52,20 @@ class Movies(Data):
         return name_to_id, id_to_name
 
 
+
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--debug', action='store_true')
+    args = parser.parse_args()
 
     os.chdir('Movies')
-    if len(sys.argv) > 1:
-        if sys.argv[1] == 'debug':
-            Movies(debug=True)
-        elif sys.argv[1] == 'reload':
-            Movies(reload=True)
-    else:
-        Movies()
+    files_that_must_exist = (os.path.join(data.DATA_DIR, name)
+                             for name in (RATINGS, MOVIE_NAMES))
+    for filepath in files_that_must_exist:
+        data.assert_exists(filepath)
+
+    try:
+        Movies(debug=args.debug)
+    except OSError as error:
+        print('cwd: ' + os.getcwd())
+        print(error)

@@ -49,10 +49,17 @@ def inference(inputs, embedding_size, embedding_dim, hidden1_units, hidden2_unit
     :param embedding_size:
   """
     # Embeddings
-    # embeddings = tf.Variable(
-    #     tf.random_uniform([embedding_dim, embedding_size], -1.0, 1.0))
-    #
-    # input_emb = tf.nn.embedding_lookup(embeddings, inputs)
+    embeddings = tf.Variable(
+        tf.random_uniform([embedding_size, embedding_dim], -1.0, 1.0))
+
+    # hash into embeddings
+    # embedding_lookup = tf.nn.embedding_lookup(embeddings, entities)
+
+    # multiply each embedding vector elemwise with ratings
+    # scale_by_value = tf.transpose(tf.mul(tf.transpose(embedding_lookup),
+    #                                      tf.transpose(ratings)))
+    # sum all vectors in each instance
+    # vector_sums = tf.reduce_sum(scale_by_value, 1)
 
     # Hidden 1
     with tf.name_scope('hidden1'):

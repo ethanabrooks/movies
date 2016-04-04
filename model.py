@@ -24,6 +24,9 @@ import time
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 import data
+from easy_movies import EasyMovies
+from movies import Movies
+from books import Books
 import ops
 import os
 import tensorflow as tf
@@ -49,13 +52,13 @@ flags.DEFINE_float('learning_rate', 0.0001, 'Initial learning rate.')
 flags.DEFINE_float('dropout_rate', .9, 'Probability of keeping nodes during dropout.')
 flags.DEFINE_integer('num_epochs', 2000, 'Number of epochs to run trainer.')
 flags.DEFINE_integer('hidden1', 1500, 'Number of units in hidden layer 1.')
+flags.DEFINE_integer('emb_dim', 300, 'Number of units in hidden layer 1.')
 flags.DEFINE_integer('hidden2', 800, 'Number of units in hidden layer 2.')
 flags.DEFINE_integer('batch_size', 10, 'Batch size.  '
                                        'Must divide evenly into the dataset sizes.')
-flags.DEFINE_string('train_dir', 'data', 'Directory to put the training data.')
 flags.DEFINE_string('save_dir', 'checkpoints', 'Directory to save data from session.')
 flags.DEFINE_string('summary_dir', 'logs', 'Directory to save data from session.')
-flags.DEFINE_string('dataset', 'movies', 'Directory to put the training data.')
+flags.DEFINE_string('dataset', 'EasyMovies', 'Directory to put the training data.')
 flags.DEFINE_boolean('debug', False, 'If true, use small dataset ')
 flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data for unit testing.')
 
@@ -127,20 +130,23 @@ def restore_variables(sess):
     print("Model restored.")
 
 
-def run_training():
+def run_training(datasets):
     """Train the autoencoder for a number of steps."""
-    # Get the sets of images and labels for training, validation, and test on data.
-    data_sets = data.Data(datafile='debug.dat') if FLAGS.debug else data.Data()
-
     # Tell TensorFlow that the model will be built into the default Graph.
     with tf.Graph().as_default():
 
         # Generate placeholders for the images and labels.
-        placeholders = placeholder_inputs(FLAGS.batch_size, data_sets.embedding_size)
+        placeholders = placeholder_inputs(FLAGS.batch_size, datasets.emb_size)
         inputs_placeholder, labels_placeholder, mask_placeholder = placeholders
 
         # Build a Graph that computes predictions from the inference model.
-        logits = ops.inference(inputs_placeholder, 300, data_sets.embedding_size, FLAGS.hidden1, FLAGS.hidden2, FLAGS.dropout_rate)
+        logits = ops.inference(inputs_placeholder,
+                               FLAGS.dropout_rate,
+                               datasets.emb_size,
+                               FLAGS.hidden1,
+                               FLAGS.hidden2,
+                               datasets.emb_size,
+                               FLAGS.emb_dim)
 
         # Add to the Graph the Ops for loss calculation.
         loss = ops.loss(logits, labels_placeholder, mask_placeholder)
@@ -196,17 +202,15 @@ def run_training():
                   (int(total), int(correct), correct / total))
 
         # And then after everything is built, start the training loop.
-        steps_per_epoch = data_sets.train.num_examples // FLAGS.batch_size
+        steps_per_epoch = datasets.train.num_examples // FLAGS.batch_size
         start_time = time.time()
 
         # TODO: make epoch a saved variable so that training picks up where it left off
-        for _ in xrange(FLAGS.num_epochs):
-            epoch = sess.run(increment)
+        for epoch in xrange(FLAGS.num_epochs):
             for step in xrange(steps_per_epoch):
-                print('test')
                 # Fill a feed dictionary with the actual set of images and labels
                 # for this particular training step.
-                feed_dict = fill_feed_dict(data_sets.train, placeholders)
+                feed_dict = fill_feed_dict(datasets.train, placeholders)
 
                 # Run one step of the model.  The return values are the activations
                 # from the `train_op` (which is discarded) and the `loss` Op.  To
@@ -236,19 +240,25 @@ def run_training():
                     if epoch % 10 == 0 or (epoch + 1) == FLAGS.num_epochs:
                         # Evaluate against the training set.
                         print('Training Data Eval:')
-                        do_eval(data_sets.train)
+                        do_eval(datasets.train)
                         # Evaluate against the validation set.
                         print('Validation Data Eval:')
-                        do_eval(data_sets.validation)
+                        do_eval(datasets.validation)
                         # Evaluate against the test set.
                         print('Test Data Eval:')
-                        do_eval(data_sets.test)
+                        do_eval(datasets.test)
 
 
 def predict(instance, dat):
     with tf.Graph().as_default():
         # Build a Graph that computes predictions from the inference model.
-        logits = ops.inference(tf.constant(instance), 300, dat.embedding_size, FLAGS.hidden1, FLAGS.hidden2, 1)
+        logits = ops.inference(tf.constant(instance),
+                               1,  # keep_prob
+                               dat.emb_size,
+                               FLAGS.hidden1,
+                               FLAGS.hidden2,
+                               dat.emb_size,
+                               FLAGS.emb_dim)
 
         sess = tf.Session()
         # Restore variables from disk.
@@ -258,12 +268,19 @@ def predict(instance, dat):
 
 
 def main(_):
-    run_training()
+    os.chdir(FLAGS.dataset)
+    data = load_data(FLAGS.dataset)
+    try:
+        run_training(data)
+    except KeyboardInterrupt:
+        data.close_file_handles()
+        print('Goodbye')
+        exit(0)
+
+
+def load_data(dataset):
+    return eval(dataset + '(load_previous=True)')
 
 
 if __name__ == '__main__':
-    try:
-        tf.app.run()
-    except KeyboardInterrupt:
-        print('\nGoodbye.')
-        exit(0)
+    tf.app.run()
