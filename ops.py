@@ -43,8 +43,6 @@ def inference(inputs,
               hidden2_units,
               embedding_size,
               embedding_dim):
-              # entities,
-              # ratings):
     """Build the MNIST model up to where it may be used for inference.
 
   Args:
