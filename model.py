@@ -61,6 +61,7 @@ flags.DEFINE_string('summary_dir', 'logs', 'Directory to save data from session.
 flags.DEFINE_string('dataset', 'EasyMovies', 'Directory to put the training data.')
 flags.DEFINE_boolean('debug', False, 'If true, use small dataset ')
 flags.DEFINE_boolean('fake_data', False, 'If true, uses fake data for unit testing.')
+flags.DEFINE_boolean('retrain', False, "If true, don't attempt to load a saved version of the model.")
 
 
 def save_path(filename):
@@ -141,12 +142,10 @@ def run_training(datasets):
 
         # Build a Graph that computes predictions from the inference model.
         logits = ops.inference(inputs_placeholder,
-                               FLAGS.dropout_rate,
                                datasets.emb_size,
                                FLAGS.hidden1,
                                FLAGS.hidden2,
-                               datasets.emb_size,
-                               FLAGS.emb_dim)
+                               FLAGS.dropout_rate)
 
         # Add to the Graph the Ops for loss calculation.
         loss = ops.loss(logits, labels_placeholder, mask_placeholder)
@@ -173,7 +172,7 @@ def run_training(datasets):
         sess = tf.Session()
 
         # Run the Op to initialize the variables.
-        if os.path.exists(CP_INFO):
+        if os.path.exists(CP_INFO) and not FLAGS.retrain:
             restore_variables(sess)
 
             # redo epoch that we last quit in the middle of
@@ -253,12 +252,10 @@ def predict(instance, dat):
     with tf.Graph().as_default():
         # Build a Graph that computes predictions from the inference model.
         logits = ops.inference(tf.constant(instance),
-                               1,  # keep_prob
                                dat.emb_size,
                                FLAGS.hidden1,
                                FLAGS.hidden2,
-                               dat.emb_size,
-                               FLAGS.emb_dim)
+                               1)  # keep_prob
 
         sess = tf.Session()
         # Restore variables from disk.

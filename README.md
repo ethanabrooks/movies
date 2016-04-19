@@ -14,6 +14,16 @@ structure and then quit. It is then up to the user to actually populate with
 files (to lazy to code in `wget`). Afterward, `main.py` will actually run the
 model.
 
+In order to run each part of the model in isolation, it is advisable to follow
+the these steps:
+
+1. Run `python movies.py` (or the dataset of your choosing) to parse the data.
+
+2. Run `model.py --dataset=Movies --retrain` to train the model. Of course, this
+   can take a while.
+
+3. Finally, 
+
 The main goal of this design (besides just getting TensorFlow to work!) was to
 allow the program's three main functions to operate independently:
 

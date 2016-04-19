@@ -36,7 +36,11 @@ import tensorflow as tf
 import numpy as np
 
 
-def inference(inputs, embedding_size, embedding_dim, hidden1_units, hidden2_units, keep_prob=.8):
+def inference(inputs,
+              embedding_dim,
+              hidden1_units,
+              hidden2_units,
+              keep_prob=.8):
     """Build the MNIST model up to where it may be used for inference.
 
   Args:
@@ -49,8 +53,8 @@ def inference(inputs, embedding_size, embedding_dim, hidden1_units, hidden2_unit
     :param embedding_size:
   """
     # Embeddings
-    embeddings = tf.Variable(
-        tf.random_uniform([embedding_size, embedding_dim], -1.0, 1.0))
+    # embeddings = tf.Variable(
+    #     tf.random_uniform([embedding_size, embedding_dim], -1.0, 1.0))
 
     # hash into embeddings
     # embedding_lookup = tf.nn.embedding_lookup(embeddings, entities)

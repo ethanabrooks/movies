@@ -37,7 +37,6 @@ class EasyMovies(Data):
             ratings.append(normalize(rating))
         bar.next()
 
-
     def populate_dicts(self, handle):
         name_to_column = {}
         column_to_name = {}
@@ -54,6 +53,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', action='store_true')
     args = parser.parse_args()
+    print(args)
 
     os.chdir('EasyMovies')
     files_that_must_exist = (os.path.join(data.DATA_DIR, name)

@@ -244,7 +244,7 @@ class Data:
                 exit(0)
 
         # load hibernating clone from file
-        with open(DATA_OBJ, 'rb') as fp:
+        with open(os.path.join(DATA_DIR, DATA_OBJ), 'rb') as fp:
             self.__dict__.update(cPickle.load(fp))
 
     def write_instance(self, user, entities, ratings):
